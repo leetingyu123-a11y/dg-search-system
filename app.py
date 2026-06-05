@@ -156,6 +156,18 @@ else:
                 st.warning("⚠️ Action Required: Please enter at least a UN Number or a Class/Division to perform search.")
                 is_valid_input = False
                 
+            # 💡 FIX: Strict Boundary Check for IMO DG Classes 1 to 9
+            if is_valid_input and final_class:
+                cleaned_num_str = clean_class_string(final_class)
+                try:
+                    class_num = float(cleaned_num_str)
+                    if class_num < 1.0 or class_num >= 10.0:
+                        st.error("❌ Input Error: IMDG Code Dangerous Goods Classes only range from 1 to 9. Class 10 or above does not exist.")
+                        is_valid_input = False
+                except ValueError:
+                    st.error("⚠️ Invalid Format: Class parameters must be numeric numbers (e.g., enter '3' or '2.1' instead of letters).")
+                    is_valid_input = False
+
             if is_valid_input and input_un and has_master:
                 un_exists = master_df[master_df['UN Number'] == input_un]
                 if un_exists.empty:
@@ -168,6 +180,14 @@ else:
                     if not final_class:
                         final_class = official_class_from_db
                         st.info(f"💡 System auto-identified Regulatory Category: Class `{final_class}`")
+                        
+                        # Double check auto-identified class boundary just in case
+                        try:
+                            if float(clean_class_string(final_class)) < 1.0 or float(clean_class_string(final_class)) >= 10.0:
+                                st.error("❌ System Error: Auto-identified Class falls outside the 1-9 regulatory boundary.")
+                                is_valid_input = False
+                        except ValueError:
+                            is_valid_input = False
                     else:
                         clean_user_cls = clean_class_string(final_class)
                         official_classes_clean = [clean_class_string(c) for c in un_exists['Class'].tolist()]
@@ -177,9 +197,9 @@ else:
                             st.error(f"🚨 Your input Class was `{user_input_class}`. Please double check regulatory data.")
                             is_valid_input = False
 
-            clean_final_class = clean_class_string(final_class)
-
+            # Begin matching calculations only when validation passes successfully
             if is_valid_input:
+                clean_final_class = clean_class_string(final_class)
                 st.markdown("---")
                 if input_un and official_psn_en:
                     st.markdown(f"""
@@ -224,7 +244,6 @@ else:
                             (df['Clean_Class'].apply(lambda x: is_class_matching(clean_final_class, x)))
                         ]
                         for _, g_row in global_rules.iterrows():
-                            # If it's a wholesale ban (e.g., Prohibited = YES for the whole class)
                             if any(k in g_row['Clean_Status'].upper() for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
                                 has_global_prohibited = True
                                 global_prohibited_row = g_row
@@ -236,17 +255,11 @@ else:
 
                     # 🧠 2. Routing Logic based on User Input Type
                     if not input_un:
-                        # 🚨 USER ONLY SEARCHED BY CLASS:
                         if has_global_prohibited:
-                            # If the whole class is banned (like Class 2.3), just show that ONE global rule row!
                             matched_rows = [global_prohibited_row]
                         else:
-                            # If there's no global ban row, but there are global remarks (like Class 3 flashpoint),
-                            # keep matched_rows empty so it triggers the yellow conditional light, avoiding UN list explosion.
                             matched_rows = []
                     else:
-                        # 🎯 USER SEARCHED BY SPECIFIC UN NUMBER:
-                        # Show precise UN match if it exists, otherwise fall back to global ban if applicable
                         exact_match = df[df['Clean_UN'] == input_un]
                         if not exact_match.empty:
                             for _, row in exact_match.iterrows():
@@ -257,7 +270,6 @@ else:
                     # --- 🎨 Render Card Output ---
                     if not matched_rows:
                         if global_class_remarks:
-                            # Yellow light warning (Show only general class remarks, hide individual UNs)
                             st.markdown(f"""
                                 <div class="partner-card" style="border-left-color: #f59e0b;">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -273,7 +285,6 @@ else:
                                 </div>
                             """, unsafe_allow_html=True)
                         else:
-                            # Safe Green Light
                             st.markdown(f"""
                                 <div class="partner-card" style="border-left-color: #10b981;">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -286,7 +297,6 @@ else:
                                 </div>
                             """, unsafe_allow_html=True)
                     else:
-                        # Red light hit (Either specific UN hit, or optimized single-row Global Class Ban)
                         for row in matched_rows:
                             status_text = row['Clean_Status']
                             un_display = row['Clean_UN'] if row['Clean_UN'] != '' else f"Class {user_input_class} Universal Policy"
@@ -304,7 +314,6 @@ else:
                                 if r_val and r_val.lower() != 'nan' and r_val != '':
                                     collected_remarks.append({"col_name": r_col, "text": r_val})
 
-                            # Merge general class rules
                             combined_remarks = []
                             combined_remarks.extend(collected_remarks)
                             for g_rem in global_class_remarks:
