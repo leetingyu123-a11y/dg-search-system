@@ -58,6 +58,16 @@ st.markdown("""
         font-weight: bold;
         color: #0f172a;
     }
+    /* 💡 Footer style for copyright declaration */
+    .footer-box {
+        text-align: center;
+        padding: 30px 0px 10px 0px;
+        font-size: 14px;
+        color: #64748b;
+        font-weight: 500;
+        border-top: 1px solid #e2e8f0;
+        margin-top: 50px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -156,7 +166,7 @@ else:
                 st.warning("⚠️ Action Required: Please enter at least a UN Number or a Class/Division to perform search.")
                 is_valid_input = False
                 
-            # 💡 FIX: Strict Boundary Check for IMO DG Classes 1 to 9
+            # Strict Boundary Check for IMO DG Classes 1 to 9
             if is_valid_input and final_class:
                 cleaned_num_str = clean_class_string(final_class)
                 try:
@@ -181,7 +191,6 @@ else:
                         final_class = official_class_from_db
                         st.info(f"💡 System auto-identified Regulatory Category: Class `{final_class}`")
                         
-                        # Double check auto-identified class boundary just in case
                         try:
                             if float(clean_class_string(final_class)) < 1.0 or float(clean_class_string(final_class)) >= 10.0:
                                 st.error("❌ System Error: Auto-identified Class falls outside the 1-9 regulatory boundary.")
@@ -237,7 +246,7 @@ else:
                     has_global_prohibited = False
                     global_prohibited_row = None
 
-                    # 🧠 1. Scan for Global Class Rules (where UN Number is blank or 'ALL')
+                    # 1. Scan for Global Class Rules (where UN Number is blank or 'ALL')
                     if clean_final_class:
                         global_rules = df[
                             ((df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')) & 
@@ -253,7 +262,7 @@ else:
                                 if r_val and r_val.lower() != 'nan' and r_val != '':
                                     global_class_remarks.append({"col_name": f"General Policy ({g_row[col_mapping['Class']]})", "text": r_val})
 
-                    # 🧠 2. Routing Logic based on User Input Type
+                    # 2. Routing Logic based on User Input Type
                     if not input_un:
                         if has_global_prohibited:
                             matched_rows = [global_prohibited_row]
@@ -267,7 +276,7 @@ else:
                         elif has_global_prohibited:
                             matched_rows = [global_prohibited_row]
 
-                    # --- 🎨 Render Card Output ---
+                    # --- Render Card Output ---
                     if not matched_rows:
                         if global_class_remarks:
                             st.markdown(f"""
@@ -337,3 +346,14 @@ else:
                             
     except Exception as e:
         st.error(f"❌ File reading failed. Error message: {e}")
+
+# ==============================================================================
+# 💡 FOOTER SECTION: Copyright Declaration
+# ==============================================================================
+# This creates a permanent, clean centered footer at the very bottom of the page.
+st.markdown("""
+    <div class="footer-box">
+        <span style="color: #e11d48; font-weight: bold;">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY</span><br>
+        Copyright © 2026 IAL DG TEAM. All Rights Reserved.
+    </div>
+    """, unsafe_allow_html=True)
