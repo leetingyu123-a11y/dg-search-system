@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import re
 
 # 設定網頁標題與寬度版面
 st.set_page_config(page_title="各航商 DG 禁收清單查詢系統", layout="wide")
@@ -52,7 +53,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 各航商 DG 禁收清單查詢系統")
-st.caption("🔥 終極版：內建 IMDG 42-24 官方 PSN 品名連動 ＆ UN號碼4碼補零雙向防呆機制")
+st.caption("🔥 終極完美版：修正 Division/Class 複雜字串模糊比對 ＆ UN號碼雙向自動補零")
 
 # 定義檔案路徑
 excel_file = "dg_list.xlsx"
@@ -63,6 +64,15 @@ master_file = "imdg_master.xlsx"
 if not os.path.exists(master_file):
     master_file = os.path.join("DG_System", "imdg_master.xlsx")
 
+# 💡 核心優化：將 Class 欄位清洗，只留下數字與小數點（例如 "Division 1.1" -> "1.1", "Class 3" -> "3"）
+def clean_class_string(class_val):
+    if pd.isna(class_val):
+        return ""
+    val_str = str(class_val).strip()
+    # 用正規表達式只抓取數字和小數點
+    match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
+    return match.group(0) if match else val_str
+
 # 輔助函式：將任何輸入的 UN 號碼（不管是 4 還是 0004）統一標準化成 4 碼字串
 def format_un_number(un_val):
     if pd.isna(un_val):
@@ -70,7 +80,6 @@ def format_un_number(un_val):
     val_str = str(un_val).strip()
     if val_str.upper() == 'ALL':
         return 'ALL'
-    # 如果是純數字，自動補零到 4 位數
     if val_str.isdigit():
         return val_str.zfill(4)
     return val_str
@@ -82,7 +91,6 @@ else:
         excel_sheets = pd.read_excel(excel_file, sheet_name=None)
         all_partners = [sheet for sheet in excel_sheets.keys() if not (sheet.startswith("Sheet") and excel_sheets[sheet].empty)]
         
-        # 讀取官方總表字典
         has_master = False
         official_psn_en = ""
         official_psn_ch = ""
@@ -93,7 +101,6 @@ else:
                 master_df.columns = master_df.columns.astype(str).str.strip()
                 
                 if 'UN Number' in master_df.columns and 'Class' in master_df.columns:
-                    # 在讀取時，就先把官方字典裡的 UN 號碼全部自動格式化成 4 碼防呆！
                     master_df['UN Number'] = master_df['UN Number'].apply(format_un_number)
                     has_master = True
                 else:
@@ -102,7 +109,7 @@ else:
                 st.warning(f"⚠️ 官方總表 imdg_master.xlsx 讀取失敗。錯誤: {e}")
 
         if not has_master:
-            st.warning("💡 提示：目前 GitHub 中尚未配置有效的官方總表 `imdg_master.xlsx`。系統目前無法對打錯的 UN 號碼進行防呆欄位和顯示官方品名（PSN）。")
+            st.warning("💡 提示：目前 GitHub 中尚未配置有效的官方總表 `imdg_master.xlsx`。")
 
         # 建立篩選介面
         col1, col2, col3 = st.columns(3)
@@ -110,11 +117,12 @@ else:
         with col1:
             st.markdown("### 1. 請輸入 Class 類別 (必填)")
             input_class = st.text_input("Class", placeholder="例如: 1, 3, 9", label_visibility="collapsed").strip()
+            # 將使用者輸入的 Class 也清洗成純數字版本
+            clean_input_class = clean_class_string(input_class)
             
         with col2:
             st.markdown("### 2. 請輸入 UN 號碼 (選填)")
             raw_input_un = st.text_input("UN Number", placeholder="例如: 0004, 3480", label_visibility="collapsed").strip()
-            # 💡 關鍵防呆：將使用者輸入的 UN 號碼直接自動補滿四碼！例如輸入 4 會自動變成 0004
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
             
         with col3:
@@ -133,21 +141,19 @@ else:
                     
                     if un_exists.empty:
                         st.error(f"❌ 嚴重警告：在最新 IMDG Code 官方總表中，根本【查無此 UN 號碼：{input_un}】！")
-                        st.error("🚨 訂艙人員極可能手誤 key 錯品項，請立即重新核對 MSDS，切勿直接放行！")
                         is_valid_input = False
                     else:
-                        # 檢查 Class 是否正確
-                        official_classes = un_exists['Class'].tolist()
+                        # 官方 Class 比對也使用清洗後的純數字版本進行安全比對
+                        official_classes = [clean_class_string(c) for c in un_exists['Class'].tolist()]
                         class_match = any(
-                            input_class.startswith(c) or c.startswith(input_class) 
-                            for c in official_classes
+                            clean_input_class.startswith(c) or c.startswith(clean_input_class) 
+                            for c in official_classes if c
                         )
                         if not class_match:
-                            st.error(f"❌ 警告：官方總表中 UN {input_un} 對應的合法 Class 為 `{official_classes}`。")
-                            st.error(f"🚨 但您輸入的 Class 是 `{input_class}`，兩者完全對不上！請確認是否填錯。")
+                            st.error(f"❌ 警告：官方總表中 UN {input_un} 對應的合法 Class 為 `{un_exists['Class'].tolist()}`。")
+                            st.error(f"🚨 但您輸入的 Class 是 `{input_class}`，兩者完全對不上！")
                             is_valid_input = False
                         else:
-                            # 🟢 抓取官方正式品名 (PSN)
                             if 'PSN' in un_exists.columns:
                                 official_psn_en = str(un_exists.iloc[0]['PSN']).strip()
                             if 'PSN_CH' in un_exists.columns:
@@ -157,7 +163,7 @@ else:
                 if is_valid_input:
                     st.markdown("---")
                     
-                    # 🎨 渲染第一層：大字體官方 DGL 品名宣告卡片
+                    # 🎨 渲染第一層：官方大品名宣告卡片
                     if input_un and official_psn_en:
                         ch_display = f" / {official_psn_ch}" if official_psn_ch and official_psn_ch != "nan" else ""
                         st.markdown(f"""
@@ -167,9 +173,6 @@ else:
                                 <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">官方法定分類：Class {input_class}</div>
                             </div>
                         """, unsafe_allow_html=True)
-                    
-                    un_display = f"`{input_un}`" if input_un else "未填寫 (展開全類別)"
-                    st.markdown(f"## 🔍 各航商收載條款比對結果 (篩選: `{selected_partner}`)")
                     
                     search_targets = all_partners if selected_partner == "全部航商" else [selected_partner]
                     
@@ -182,14 +185,15 @@ else:
                             st.error(f"⚠️ 航商分頁 `{sheet_name}` 格式不符，請確認是否包含：UN號碼、Class、狀態、限制條件")
                             continue
                         
-                        df['Class'] = df['Class'].astype(str).str.strip()
-                        # 💡 關鍵防呆：將航商 Excel 裡面的 UN 號碼也通通自動在背後轉成 4 碼進行比對！
+                        # 💡 核心清洗：把航商 Excel 裡面的 Class (例如 Division 1.1) 轉成純數字 (1.1)
+                        df['Clean_Class'] = df['Class'].apply(clean_class_string)
                         df['UN號碼'] = df['UN號碼'].apply(format_un_number)
                         df['狀態'] = df['狀態'].astype(str).str.strip()
                         df['限制條件'] = df['限制條件'].astype(str).str.strip()
 
+                        # 使用純數字版本進行精準對接
                         match_class_df = df[
-                            df['Class'].apply(lambda x: input_class.startswith(x) or x.startswith(input_class))
+                            df['Clean_Class'].apply(lambda x: clean_input_class.startswith(x) or x.startswith(clean_input_class))
                         ]
                         
                         entries_to_show = []
