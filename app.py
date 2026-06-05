@@ -44,16 +44,16 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 各航商 DG 禁收清單查詢系統")
-st.caption("🔥 智能防錯版：內建 IMDG 官方字典驗證，嚴防打錯 UN 號碼漏報出事")
+st.caption("🔥 雙 Excel 升級版：支援 .xlsx 官方總表驗證 ＆ 備註大字體卡片全展開")
 
-# 定義檔案路徑
+# 定義檔案路徑 (皆改為 .xlsx 格式)
 excel_file = "dg_list.xlsx"
 if not os.path.exists(excel_file):
     excel_file = os.path.join("DG_System", "dg_list.xlsx")
 
-master_file = "imdg_master.csv"
+master_file = "imdg_master.xlsx"
 if not os.path.exists(master_file):
-    master_file = os.path.join("DG_System", "imdg_master.csv")
+    master_file = os.path.join("DG_System", "imdg_master.xlsx")
 
 # 檢查必要的檔案是否存在
 if not os.path.exists(excel_file):
@@ -64,21 +64,24 @@ else:
         excel_sheets = pd.read_excel(excel_file, sheet_name=None)
         all_partners = [sheet for sheet in excel_sheets.keys() if not (sheet.startswith("Sheet") and excel_sheets[sheet].empty)]
         
-        # 讀取官方總表字典 (CSV)
+        # 🟢 改成讀取官方總表字典 (Excel .xlsx 格式)
         has_master = False
         if os.path.exists(master_file):
             try:
-                # 讀取官方字典，將 UN 號碼與 Class 都轉成字串防呆
-                master_df = pd.read_csv(master_file, dtype=str)
-                master_df.columns = master_df.columns.str.strip()
-                # 確保必要欄位存在（對齊 GitHub 常見開源 DGL 欄位名）
+                # 讀取 Excel 的第一個工作頁，並強制將所有內容轉為字串防止遺失文字
+                master_df = pd.read_excel(master_file, dtype=str)
+                master_df.columns = master_df.columns.astype(str).str.strip()
+                
+                # 確保必要欄位存在（請確認你的 imdg_master.xlsx 欄位名稱叫這兩個）
                 if 'UN Number' in master_df.columns and 'Class' in master_df.columns:
                     has_master = True
+                else:
+                    st.warning(f"⚠️ 官方總表 `imdg_master.xlsx` 內找不到 'UN Number' 或 'Class' 欄位名稱！")
             except Exception as e:
-                st.warning(f"⚠️ 官方總表 imdg_master.csv 讀取失敗，將跳過字典驗證。錯誤: {e}")
+                st.warning(f"⚠️ 官方總表 imdg_master.xlsx 讀取失敗，將跳過字典驗證。錯誤: {e}")
 
         if not has_master:
-            st.warning("💡 提示：目前 GitHub 中尚未上傳有效的官方總表 `imdg_master.csv`。系統目前無法對手殘打錯的 UN 號碼進行防呆攔截，建議盡快補上檔案！")
+            st.warning("💡 提示：目前 GitHub 中尚未上傳有效的官方總表 `imdg_master.xlsx`。系統目前無法對打錯的 UN 號碼進行防呆攔截，建議盡快補上檔案！")
 
         # 建立篩選介面
         col1, col2, col3 = st.columns(3)
@@ -104,7 +107,7 @@ else:
                 # ==================== 🚨 第一關：官方字典防呆驗證 ====================
                 is_valid_input = True
                 if has_master and input_un:
-                    # 檢查這份官方字典裡，有沒有這個 UN 號碼
+                    # 檢查這份官方 Excel 字典裡，有沒有這個 UN 號碼
                     un_exists = master_df[master_df['UN Number'] == input_un]
                     
                     if un_exists.empty:
@@ -112,7 +115,7 @@ else:
                         st.error("🚨 訂艙人員極可能 key 錯資料打成不存在的號碼，請立即重新核對 MSDS，切勿直接放行！")
                         is_valid_input = False
                     else:
-                        # 如果 UN 號碼存在，順便檢查他打的 Class 跟官方對不對得上 (支援模糊比對，如 2.1 對應 2)
+                        # 如果 UN 號碼存在，檢查他打的 Class 跟官方對不對得上
                         official_classes = un_exists['Class'].tolist()
                         class_match = any(
                             input_class.startswith(c) or c.startswith(input_class) 
@@ -209,4 +212,4 @@ else:
                             """, unsafe_allow_html=True)
                         
     except Exception as e:
-        st.error(f"❌ 讀取 檔案失敗。錯誤訊息: {e}")
+        st.error(f"❌ 讀取檔案失敗。錯誤訊息: {e}")
