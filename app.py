@@ -25,7 +25,7 @@ st.markdown("""
         margin-bottom: 10px;
     }
     .remark-text {
-        font-size: 22px !important;  /* 這裡把備註字體放大到 22px，看得超級清楚 */
+        font-size: 22px !important; 
         line-height: 1.6;
         color: #1e293b;
         font-weight: 500;
@@ -33,7 +33,7 @@ st.markdown("""
         padding: 15px;
         border-radius: 6px;
         border: 1px solid #e2e8f0;
-        white-space: pre-wrap; /* 支援 Excel 內的分行 */
+        white-space: pre-wrap; 
     }
     .partner-title {
         font-size: 26px !important;
@@ -44,7 +44,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 各航商 DG 禁收清單查詢系統")
-st.caption("🔥 終極放大版：備註全展開、字體大升級 ＆ 支援單一 UN 多條規定無限追加")
+st.caption("🔥 完美改版：支援單查 Class 彈性判定 ＆ 備註大字體完整展開卡片")
 
 # 檢查路徑與檔案
 excel_file = "dg_list.xlsx"
@@ -65,12 +65,12 @@ else:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.markdown("### 1. 請輸入 Class 類別")
+            st.markdown("### 1. 請輸入 Class 類別 (必填)")
             input_class = st.text_input("Class", placeholder="例如: 1, 3, 5.1", label_visibility="collapsed").strip()
             
         with col2:
-            st.markdown("### 2. 請輸入 UN 號碼")
-            input_un = st.text_input("UN Number", placeholder="例如: 1993, 3480", label_visibility="collapsed").strip()
+            st.markdown("### 2. 請輸入 UN 號碼 (選填)")
+            input_un = st.text_input("UN Number", placeholder="留空則查詢整個 Class 規則", label_visibility="collapsed").strip()
             
         with col3:
             st.markdown("### 3. 選擇特定航商 (選填)")
@@ -79,11 +79,12 @@ else:
 
         # 點擊查詢按鈕
         if st.button("開始查詢", type="primary", use_container_width=True):
-            if not input_class or not input_un:
-                st.warning("⚠️ 請同時輸入 Class 和 UN 號碼再進行查詢！")
+            if not input_class:
+                st.warning("⚠️ 請至少輸入 Class 類別再進行查詢！")
             else:
                 st.markdown("---")
-                st.markdown(f"## 🔍 查詢結果 (Class: `{input_class}` / UN: `{input_un}` / 篩選: `{selected_partner}`)")
+                un_display = f"`{input_un}`" if input_un else "未填寫 (展開全類別)"
+                st.markdown(f"## 🔍 查詢結果 (Class: `{input_class}` / UN: {un_display} / 篩選: `{selected_partner}`)")
                 
                 # 決定這次要查詢哪些航商
                 search_targets = all_partners if selected_partner == "全部航商" else [selected_partner]
@@ -110,45 +111,59 @@ else:
                         df['Class'].apply(lambda x: input_class.startswith(x) or x.startswith(input_class))
                     ]
                     
-                    # 用來存放該航商要顯示的所有規定
                     entries_to_show = []
                     
                     if match_class_df.empty:
-                        entries_to_show.append({"un": input_un, "status": "🟢 正常收載", "remark": "Excel 中無此 Class 禁收限制"})
+                        # 如果完全沒設定該 Class 的規則
+                        entries_to_show.append({
+                            "un": input_un if input_un else "該 Class 全品項",
+                            "status": "🟢 正常收載",
+                            "remark": "Excel 中無此 Class 任何禁收限制"
+                        })
                     else:
-                        # 1. 檢查有無設 ALL 絕對禁收
-                        absolute_row = match_class_df[
-                            (match_class_df['UN號碼'].str.upper() == 'ALL') & 
-                            (match_class_df['狀態'].str.contains('絕對禁收'))
-                        ]
-                        
-                        if not absolute_row.empty:
-                            entries_to_show.append({"un": "ALL", "status": "🔴 絕對禁收", "remark": absolute_row.iloc[0]['限制條件']})
+                        # 💡 核心修正邏輯：如果使用者「沒有填寫 UN 號碼」
+                        if not input_un:
+                            # 直接把該 Class 在 Excel 裡登記的所有行通通抓出來秀給使用者看
+                            for _, row in match_class_df.iterrows():
+                                entries_to_show.append({
+                                    "un": row['UN號碼'],
+                                    "status": row['狀態'],
+                                    "remark": row['限制條件']
+                                })
                         else:
-                            # 2. 精準找有沒有完全等於輸入的 UN 號碼（可能有多行！）
-                            exact_un_match = match_class_df[match_class_df['UN號碼'] == input_un]
+                            # 💡 如果有填寫 UN 號碼，執行精準交叉比對
+                            # 1. 檢查有無設 ALL 絕對禁收
+                            absolute_row = match_class_df[
+                                (match_class_df['UN號碼'].str.upper() == 'ALL') & 
+                                (match_class_df['狀態'].str.contains('絕對禁收'))
+                            ]
                             
-                            if not exact_un_match.empty:
-                                for _, row in exact_un_match.iterrows():
-                                    entries_to_show.append({"un": row['UN號碼'], "status": row['狀態'], "remark": row['限制條件']})
+                            if not absolute_row.empty:
+                                entries_to_show.append({"un": "ALL", "status": "🔴 絕對禁收", "remark": absolute_row.iloc[0]['限制條件']})
                             else:
-                                # 3. 如果沒有精準符合的 UN，再找看看有沒有 Class 通用提示 (ALL)
-                                all_property_row = match_class_df[match_class_df['UN號碼'].str.upper() == 'ALL']
-                                if not all_property_row.empty:
-                                    for _, row in all_property_row.iterrows():
-                                        entries_to_show.append({"un": "ALL (通用條款)", "status": row['狀態'], "remark": row['限制條件']})
+                                # 2. 精準找有沒有完全等於輸入的 UN 號碼（可能有多行！）
+                                exact_un_match = match_class_df[match_class_df['UN號碼'] == input_un]
+                                
+                                if not exact_un_match.empty:
+                                    for _, row in exact_un_match.iterrows():
+                                        entries_to_show.append({"un": row['UN號碼'], "status": row['狀態'], "remark": row['限制條件']})
                                 else:
+                                    # 3. 如果沒有精準符合的 UN，再找看看有沒有 Class 通用提示 (ALL)
+                                    all_property_row = match_class_df[match_class_df['UN號碼'].str.upper() == 'ALL']
+                                    if not all_property_row.empty:
+                                        for _, row in all_property_row.iterrows():
+                                            entries_to_show.append({"un": "ALL (通用條款)", "status": row['狀態'], "remark": row['限制條件']})
+                                    else:
                                         entries_to_show.append({"un": input_un, "status": "🟢 正常收載", "remark": "無特殊禁收限制"})
 
-                    # --- 🎨 開始用大卡片與大文字噴出結果 ---
+                    # --- 🎨 渲染精美大卡片 ---
                     for entry in entries_to_show:
-                        # 根據狀態決定卡片的左邊框顏色與標籤顏色
                         status = entry['status']
                         if "🔴" in status:
                             border_color = "#ef4444"
                             bg_badge = "#fee2e2"
                             text_badge = "#991b1b"
-                        elif "🟡" in status or "特定" in status:
+                        elif "🟡" in status or "特定" in status or "注意" in status:
                             border_color = "#f59e0b"
                             bg_badge = "#fef3c7"
                             text_badge = "#92400e"
@@ -157,7 +172,6 @@ else:
                             bg_badge = "#d1fae5"
                             text_badge = "#065f46"
                         
-                        # 輸出 HTML 區塊
                         st.markdown(f"""
                             <div class="partner-card" style="border-left-color: {border_color};">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
