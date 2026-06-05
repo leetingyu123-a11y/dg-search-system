@@ -52,7 +52,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 各航商 DG 禁收清單查詢系統")
-st.caption("🔥 完美修正版：優化前導零（0005）清洗機制 ＆ 支援 Class 與 UN 號碼雙欄自由選填")
 
 # 定義檔案路徑
 excel_file = "dg_list.xlsx"
