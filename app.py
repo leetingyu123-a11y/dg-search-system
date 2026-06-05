@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 
-st.set_page_index_config(page_title="各航商 DG 禁收清單查詢", layout="wide")
+st.set_page_config(page_title="各航商 DG 禁收清單查詢", layout="wide")
 st.title("🚢 各航商 DG 禁收清單查詢")
 st.caption("🔥 優先判斷 Class 大原則 ➡️ 通過後才判斷特定 UN 號碼")
 
