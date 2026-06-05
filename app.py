@@ -353,7 +353,10 @@ else:
 # This creates a permanent, clean centered footer at the very bottom of the page.
 st.markdown("""
     <div class="footer-box">
-        <span style="color: #e11d48; font-weight: bold;">⚠️ INTERNAL USE ONLY ⚠️ INTERNAL USE ONLY ⚠️ INTERNAL USE ONLY– DO NOT DISTRIBUTE EXTERNALLY</span><br>
+        <span style="color: #e11d48; font-weight: bold;">⚠️ INTERNAL USE ONLY
+        ⚠️ INTERNAL USE ONLY 
+        ⚠️ INTERNAL USE ONLY
+        – DO NOT DISTRIBUTE EXTERNALLY</span><br>
         Copyright © 2026 IAL DG TEAM. All Rights Reserved.
     </div>
     """, unsafe_allow_html=True)
