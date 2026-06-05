@@ -52,7 +52,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 各航商 DG 禁收清單查詢系統")
-st.caption("🔥 完美精準分流版：Class 與 UN 號碼皆為選填，支援智慧代入、多向穿透與絕對優先攔截機制")
+st.caption("🔥 完美修正版：優化前導零（0005）清洗機制 ＆ 支援 Class 與 UN 號碼雙欄自由選填")
 
 # 定義檔案路徑
 excel_file = "dg_list.xlsx"
@@ -63,7 +63,7 @@ master_file = "imdg_master.xlsx"
 if not os.path.exists(master_file):
     master_file = os.path.join("DG_System", "imdg_master.xlsx")
 
-# 💡 清洗 Class 欄位，只留下數字與小數點 (例如 "Division 1.1" -> "1.1")
+# 清洗 Class 欄位，只留下數字與小數點 (例如 "Division 1.1" -> "1.1")
 def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
@@ -71,7 +71,7 @@ def clean_class_string(class_val):
     match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
     return match.group(0) if match else val_str
 
-# 💡 全 Class 家族雙向穿透演算法
+# 全 Class 家族雙向穿透演算法
 def is_class_matching(input_cls, target_cls):
     if not input_cls or not target_cls:
         return False
@@ -87,21 +87,34 @@ def is_class_matching(input_cls, target_cls):
             return True
     return False
 
-# 輔助函式：將任何輸入的 UN 號碼統一標準化成 4 碼字串
+# 💡 超強效極致清洗：確保 0005 不管在 Excel 裡怎麼變形，通通被強行還原成 "0005"
 def format_un_number(un_val):
     if pd.isna(un_val):
         return ""
+    
+    # 處理可能被讀成 float 的情況 (如 5.0 -> 5)
     if isinstance(un_val, float):
         if un_val.is_integer():
             un_val = int(un_val)
+            
     val_str = str(un_val).strip()
+    
+    # 再次防呆處理字串尾巴帶有 .0 的情況
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
         
     if val_str.upper() == 'ALL':
         return 'ALL'
+        
+    # 如果整串都是數字，強行補足 4 位數（解決 5 -> 0005 的問題）
     if val_str.isdigit():
         return val_str.zfill(4)
+        
+    # 如果是帶有非數字的（如某些特別欄位），提取數字部分來補零
+    digit_match = re.search(r'\d+', val_str)
+    if digit_match:
+        return digit_match.group(0).zfill(4)
+        
     return val_str
 
 if not os.path.exists(excel_file):
@@ -128,11 +141,11 @@ else:
         
         with col1:
             st.markdown("### 1. 請輸入 Class 類別 (選填)")
-            user_input_class = st.text_input("Class Input", placeholder="例如: 1, 3, 5.1, 9", label_visibility="collapsed").strip()
+            user_input_class = st.text_input("Class Input", placeholder="例如: 1, 3, 5.1", label_visibility="collapsed").strip()
             
         with col2:
             st.markdown("### 2. 請輸入 UN 號碼 (選填)")
-            raw_input_un = st.text_input("UN Number Input", placeholder="例如: 0004, 3480", label_visibility="collapsed").strip()
+            raw_input_un = st.text_input("UN Number Input", placeholder="例如: 0005, 3480", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
             
         with col3:
@@ -146,12 +159,11 @@ else:
             official_psn_ch = ""
             is_valid_input = True
             
-            # 🚨 防呆：如果兩個都沒填
             if not input_un and not final_class:
                 st.warning("⚠️ 請至少輸入「UN 號碼」或「Class 類別」其中一項再進行查詢！")
                 is_valid_input = False
                 
-            # 🧠 智慧判斷：如果有輸入 UN 號碼，去官方總表撈法規資料
+            # 🧠 智慧判斷：透過輸入的 UN 去捞官方字典
             if is_valid_input and input_un and has_master:
                 un_exists = master_df[master_df['UN Number'] == input_un]
                 
@@ -165,12 +177,12 @@ else:
                     if 'PSN_CH' in un_exists.columns:
                         official_psn_ch = str(un_exists.iloc[0]['PSN_CH']).strip()
                     
-                    # 如果使用者沒填 Class，自動幫他代入官方定義的 Class
+                    # 如果使用者沒手填 Class，自動由系統代入官方分類
                     if not final_class:
                         final_class = official_class_from_db
                         st.info(f"💡 系統自動識別法規類別：Class `{final_class}`")
                     else:
-                        # 如果使用者自己有填 Class，做交叉驗證
+                        # 如果使用者自己有填，做交叉驗證
                         clean_user_cls = clean_class_string(final_class)
                         official_classes_clean = [clean_class_string(c) for c in un_exists['Class'].tolist()]
                         class_match = any(is_class_matching(clean_user_cls, c) for c in official_classes_clean if c)
@@ -180,14 +192,12 @@ else:
                             st.error(f"🚨 但您手動輸入的 Class 是 `{user_input_class}`，兩者完全對不上！")
                             is_valid_input = False
 
-            # 清洗最終用於比對的 Class 字串
             clean_final_class = clean_class_string(final_class)
 
-            # ==================== 🚨 第二關：航商限制條款比對 ====================
+            # ==================== 🚨 第二關：航商黑名單對比 ====================
             if is_valid_input:
                 st.markdown("---")
                 
-                # 🎨 渲染官方大品名宣告卡片
                 if input_un and official_psn_en:
                     ch_display = f" / {official_psn_ch}" if official_psn_ch and official_psn_ch != "nan" else ""
                     st.markdown(f"""
@@ -209,6 +219,7 @@ else:
                         st.error(f"⚠️ 航商分頁 `{sheet_name}` 格式不符，請確認是否包含：UN號碼、Class、狀態、限制條件")
                         continue
                     
+                    # 💡 關鍵強力清洗：在進行任何篩選前，先把航商 Excel 裡面的 UN 號碼全部強制洗成 4 碼字串
                     df['UN號碼'] = df['UN號碼'].apply(format_un_number)
                     df['Clean_Class'] = df['Class'].apply(clean_class_string)
                     df['狀態'] = df['狀態'].astype(str).str.strip()
@@ -216,7 +227,7 @@ else:
 
                     entries_to_show = []
 
-                    # 🟢 分流 A：使用者沒有填寫 UN 號碼 ➡️ 僅透過 Class 展開所有相符項目
+                    # 🟢 分流 A：使用者沒填 UN 號碼 ➡️ 依據 Class 攤開所有列
                     if not input_un:
                         match_class_df = df[
                             df['Clean_Class'].apply(lambda x: is_class_matching(clean_final_class, x))
@@ -224,16 +235,16 @@ else:
                         for _, row in match_class_df.iterrows():
                             entries_to_show.append({"un": row['UN號碼'], "status": row['狀態'], "remark": row['限制條件']})
                     
-                    # 🔵 分流 B：使用者有填寫特定的 UN 號碼 ➡️ 實施絕對優先強行攔截
+                    # 🔵 分流 B：使用者有填寫特定 UN 號碼 ➡️ 絕對強行精準對比
                     else:
-                        # 優先看航商那裏有沒有直接寫這顆精確的 UN 號碼（完全繞過 Class 格式漏洞）
+                        # 經過上面強大清洗後，這裡比對的 input_un ("0005") 就能精準擊中 df['UN號碼'] 裡的 "0005"
                         exact_un_match = df[df['UN號碼'] == input_un]
                         
                         if not exact_un_match.empty:
                             for _, row in exact_un_match.iterrows():
                                 entries_to_show.append({"un": row['UN號碼'], "status": row['狀態'], "remark": row['限制條件']})
                         else:
-                            # 如果沒有精確號碼，改找有沒有該 Class 家族的「ALL 通用條款」
+                            # 沒單獨號碼條款，改找該 Class 的通用 ALL 條款
                             if clean_final_class:
                                 match_class_all_df = df[
                                     (df['UN號碼'].str.upper() == 'ALL') & 
@@ -242,29 +253,38 @@ else:
                                 for _, row in match_class_all_df.iterrows():
                                     entries_to_show.append({"un": "ALL (通用條款)", "status": row['狀態'], "remark": row['限制條件']})
 
-                    # 如果兩者都查無資料，代表該航商開綠燈放行
+                    # 如果都完全沒中，才是安全放行
                     if not entries_to_show:
                         entries_to_show.append({"un": input_un if input_un else "該 Class", "status": "🟢 正常收載", "remark": "該航商無針對此查詢品項設定特殊禁收限制"})
 
-                    # --- 🎨 渲染航商限制卡片 ---
+                    # --- 🎨 渲染卡片 ---
                     for entry in entries_to_show:
                         status = entry['status']
-                        if "🔴" in status or "禁收" in status:
+                        # 只要狀態文字裡包含「YES」、「禁收」、「不能收」、「🔴」等字眼，一律上紅牌
+                        if "🔴" in status or "禁收" in status or status.upper() == "YES":
                             border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
+                            display_status = "🔴 絕對禁收"
                         elif "🟡" in status or "特定" in status or "注意" in status:
                             border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
+                            display_status = status
                         else:
                             border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
+                            display_status = status
                         
+                        # 如果航商限制條件是空的（像 IAL 的 0005 後面是空的），幫它美化補字
+                        display_remark = entry['remark']
+                        if not display_remark or display_remark.lower() == 'nan' or display_remark == '':
+                            display_remark = "該航商對此品項公告為禁止收載，無額外備註條件。"
+
                         st.markdown(f"""
                             <div class="partner-card" style="border-left-color: {border_color};">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
                                     <span class="partner-title">🏢 航商：{sheet_name} (對應UN: {entry['un']})</span>
-                                    <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{status}</span>
+                                    <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
                                 </div>
                                 <div style="margin-top: 10px;">
                                     <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 限制條件與完整備註：</div>
-                                    <div class="remark-text">{entry['remark']}</div>
+                                    <div class="remark-text">{display_remark}</div>
                                 </div>
                             </div>
                         """, unsafe_allow_html=True)
