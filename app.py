@@ -62,7 +62,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 Carrier DG Prohibited List Query System")
-st.caption("🔥 International Version: Supports UN-blank inheritance, infinite Remark scanning, and fully automated leading-zero padding.")
+st.caption("🔥 Smart Class Filtering Edition: Displays only global class policies when searching by Class, eliminating UN lists clutter.")
 
 # Define file paths
 excel_file = "dg_list.xlsx"
@@ -137,14 +137,14 @@ else:
         # Search Query Interface Layout
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown("### 1. Enter Class / Division ")
+            st.markdown("### 1. Enter Class / Division (Optional)")
             user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
         with col2:
-            st.markdown("### 2. Enter UN Number ")
+            st.markdown("### 2. Enter UN Number (Optional)")
             raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 3481", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
         with col3:
-            st.markdown("### 3. Filter by Carrier ")
+            st.markdown("### 3. Filter by Carrier (Optional)")
             partner_options = ["ALL CARRIERS"] + all_partners
             selected_partner = st.selectbox("Partner Filter", partner_options, label_visibility="collapsed")
 
@@ -197,7 +197,6 @@ else:
                     df = excel_sheets[sheet_name]
                     df.columns = df.columns.astype(str).str.strip()
                     
-                    # Column mapping supporting both English and Traditional Chinese headers
                     col_mapping = {}
                     for c in df.columns:
                         if c in ['UN號碼', 'UN Number', 'UN Number ']: col_mapping['UN'] = c
@@ -208,7 +207,6 @@ else:
                         st.error(f"⚠️ Sheet `{sheet_name}` format error. Must contain headers: [UN Number], [Class], and [Prohibited]")
                         continue
                     
-                    # Dynamically catch all columns that act as Remarks
                     remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
                     
                     df['Clean_UN'] = df[col_mapping['UN']].fillna('').apply(format_un_number)
@@ -217,41 +215,54 @@ else:
 
                     matched_rows = []
                     global_class_remarks = []
+                    has_global_prohibited = False
+                    global_prohibited_row = None
 
-                    # 🧠 Rule Inheritance Logic for blank UN numbers (e.g. Class 2.3 or Class 3 flash point rules)
+                    # 🧠 1. Scan for Global Class Rules (where UN Number is blank or 'ALL')
                     if clean_final_class:
                         global_rules = df[
                             ((df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')) & 
                             (df['Clean_Class'].apply(lambda x: is_class_matching(clean_final_class, x)))
                         ]
                         for _, g_row in global_rules.iterrows():
+                            # If it's a wholesale ban (e.g., Prohibited = YES for the whole class)
+                            if any(k in g_row['Clean_Status'].upper() for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
+                                has_global_prohibited = True
+                                global_prohibited_row = g_row
+                            
                             for r_col in remark_cols:
                                 r_val = str(g_row[r_col]).strip()
                                 if r_val and r_val.lower() != 'nan' and r_val != '':
-                                    global_class_remarks.append({"col_name": f"General Class Restriction ({g_row[col_mapping['Class']]})", "text": r_val})
-                            
-                            if input_un and any(k in g_row['Clean_Status'].upper() for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
-                                matched_rows.append(g_row)
+                                    global_class_remarks.append({"col_name": f"General Policy ({g_row[col_mapping['Class']]})", "text": r_val})
 
-                    # Standard routing
+                    # 🧠 2. Routing Logic based on User Input Type
                     if not input_un:
-                        match_df = df[df['Clean_Class'].apply(lambda x: is_class_matching(clean_final_class, x)) & (df['Clean_UN'] != '')]
-                        for _, row in match_df.iterrows():
-                            matched_rows.append(row)
+                        # 🚨 USER ONLY SEARCHED BY CLASS:
+                        if has_global_prohibited:
+                            # If the whole class is banned (like Class 2.3), just show that ONE global rule row!
+                            matched_rows = [global_prohibited_row]
+                        else:
+                            # If there's no global ban row, but there are global remarks (like Class 3 flashpoint),
+                            # keep matched_rows empty so it triggers the yellow conditional light, avoiding UN list explosion.
+                            matched_rows = []
                     else:
+                        # 🎯 USER SEARCHED BY SPECIFIC UN NUMBER:
+                        # Show precise UN match if it exists, otherwise fall back to global ban if applicable
                         exact_match = df[df['Clean_UN'] == input_un]
                         if not exact_match.empty:
                             for _, row in exact_match.iterrows():
                                 matched_rows.append(row)
+                        elif has_global_prohibited:
+                            matched_rows = [global_prohibited_row]
 
                     # --- 🎨 Render Card Output ---
                     if not matched_rows:
                         if global_class_remarks:
-                            # Yellow light warning (Inherited general remarks found)
+                            # Yellow light warning (Show only general class remarks, hide individual UNs)
                             st.markdown(f"""
                                 <div class="partner-card" style="border-left-color: #f59e0b;">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (UN Ref: {input_un})</span>
+                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Class Ref: {user_input_class})</span>
                                         <span class="status-badge" style="background-color: #fef3c7; color: #92400e;">🟡 Conditional Acceptance</span>
                                     </div>
                                     <div style="margin-top: 10px;">
@@ -267,19 +278,19 @@ else:
                             st.markdown(f"""
                                 <div class="partner-card" style="border-left-color: #10b981;">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (UN Ref: {input_un if input_un else "This Class"})</span>
+                                        <span class="partner-title">🏢 Carrier: {sheet_name} (UN Ref: {input_un if input_un else "Class " + user_input_class})</span>
                                         <span class="status-badge" style="background-color: #d1fae5; color: #065f46;">🟢 Standard Acceptance</span>
                                     </div>
                                     <div style="margin-top: 10px;">
-                                        <div class="remark-box"><div class="remark-line">No specific booking restrictions found for this item from this carrier.</div></div>
+                                        <div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>
                                     </div>
                                 </div>
                             """, unsafe_allow_html=True)
                     else:
-                        # Blacklist match or Class 2.3 wholesale ban hit
+                        # Red light hit (Either specific UN hit, or optimized single-row Global Class Ban)
                         for row in matched_rows:
                             status_text = row['Clean_Status']
-                            un_display = row['Clean_UN'] if row['Clean_UN'] != '' else "Class Restriction"
+                            un_display = row['Clean_UN'] if row['Clean_UN'] != '' else f"Class {user_input_class} Universal Policy"
                             
                             if any(k in status_text.upper() for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
                                 border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
@@ -294,7 +305,7 @@ else:
                                 if r_val and r_val.lower() != 'nan' and r_val != '':
                                     collected_remarks.append({"col_name": r_col, "text": r_val})
 
-                            # Merge general class rules if any
+                            # Merge general class rules
                             combined_remarks = []
                             combined_remarks.extend(collected_remarks)
                             for g_rem in global_class_remarks:
@@ -304,11 +315,11 @@ else:
                             st.markdown(f"""
                                 <div class="partner-card" style="border-left-color: {border_color};">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Excel Row Ref: {un_display})</span>
+                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
                                         <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
                                     </div>
                                     <div style="margin-top: 10px;">
-                                        <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 Comprehensive Carrier Remarks (Including Class Inheritance):</div>
+                                        <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 Comprehensive Carrier Remarks:</div>
                                         <div class="remark-box">
                                             {"".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in combined_remarks]) if combined_remarks else '<div class="remark-line">Prohibited without additional conditions.</div>'}
                                         </div>
