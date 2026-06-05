@@ -52,7 +52,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 各航商 DG 禁收清單查詢系統")
-st.caption("🚀 超神速升級版：支援【免填 Class】自動識別法規類別 ＆ UN 號碼精準特定條款篩選")
 
 # 定義檔案路徑
 excel_file = "dg_list.xlsx"
