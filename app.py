@@ -2,33 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import re
-st.markdown(
-    """
-    <style>
-    /* 科技感深藍黑漸層背景 */
-    .stApp {
-        background: linear-gradient(135deg, #0f111a 0%, #1a1d2e 100%) !important;
-    }
-    
-    /* 將網頁文字改成亮白色 */
-    h1, h2, h3, p, label, .stMarkdown {
-        color: #f1f5f9 !important;
-    }
-    
-    /* 輸入框美化 */
-    .stTextInput div div {
-        background-color: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 8px !important;
-    }
-    .stTextInput div div input {
-        color: white !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-# =========================================================
+
 # Set page title and wide layout
 st.set_page_config(page_title="Carrier DG Prohibited List Query System", layout="wide")
 
