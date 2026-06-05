@@ -137,14 +137,14 @@ else:
         # Search Query Interface Layout
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown("### 1. Enter Class / Division (Optional)")
+            st.markdown("### 1. Enter Class / Division ")
             user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
         with col2:
-            st.markdown("### 2. Enter UN Number (Optional)")
+            st.markdown("### 2. Enter UN Number ")
             raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 3481", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
         with col3:
-            st.markdown("### 3. Filter by Carrier (Optional)")
+            st.markdown("### 3. Filter by Carrier ")
             partner_options = ["ALL CARRIERS"] + all_partners
             selected_partner = st.selectbox("Partner Filter", partner_options, label_visibility="collapsed")
 
