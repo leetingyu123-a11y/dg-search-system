@@ -62,7 +62,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 Carrier DG Prohibited List Query System")
-st.caption("🔥 Smart Class Filtering Edition: Displays only global class policies when searching by Class, eliminating UN lists clutter.")
 
 # Define file paths
 excel_file = "dg_list.xlsx"
