@@ -6,7 +6,6 @@ import re
 # 設定網頁標題與寬度版面
 st.set_page_config(page_title="各航商 DG 禁收清單查詢系統", layout="wide")
 
-# 強制放大網頁文字與備註區塊的自訂樣式 (CSS)
 st.markdown("""
     <style>
     .psn-card {
@@ -53,7 +52,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🚢 各航商 DG 禁收清單查詢系統")
-st.caption("🔥 終極完美版：修正 Division/Class 複雜字串模糊比對 ＆ UN號碼雙向自動補零")
+st.caption("🔥 全網最完備版：內建 IMDG Code 全 Class 家族雙向穿透演算法，徹底杜絕各航商 Excel 格式漏洞")
 
 # 定義檔案路徑
 excel_file = "dg_list.xlsx"
@@ -64,16 +63,43 @@ master_file = "imdg_master.xlsx"
 if not os.path.exists(master_file):
     master_file = os.path.join("DG_System", "imdg_master.xlsx")
 
-# 💡 核心優化：將 Class 欄位清洗，只留下數字與小數點（例如 "Division 1.1" -> "1.1", "Class 3" -> "3"）
+# 💡 核心優化：極致清洗，確保只留下數字與小數點 (例如 "Division 5.1" -> "5.1", "Class 3" -> "3")
 def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
     val_str = str(class_val).strip()
-    # 用正規表達式只抓取數字和小數點
     match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
     return match.group(0) if match else val_str
 
-# 輔助函式：將任何輸入的 UN 號碼（不管是 4 還是 0004）統一標準化成 4 碼字串
+# 💡【核心重大升級】：全 Class 家族雙向穿透演算法
+def is_class_matching(input_cls, target_cls):
+    if not input_cls or not target_cls:
+        return False
+        
+    # 1. 處理第 1 類（爆炸品大魔王）：不論子項，只要是 1 開頭一律視為相符
+    if input_cls.startswith('1') and target_cls.startswith('1'):
+        return True
+        
+    # 2. 精確字串相同（例如 5.1 對應 5.1，或 3 對應 3）
+    if input_cls == target_cls:
+        return True
+        
+    # 3. 雙向主類別包容性檢查（處理「主類別通用條款」與「細分亞類」的交叉盲區）
+    # 情況 A：使用者輸入精確的 "5.1"，但航商 Excel 裡寫的是大類 "5"（代表第 5 類全禁）
+    if '.' in input_cls and '.' not in target_cls:
+        main_class = input_cls.split('.')[0]
+        if main_class == target_cls:
+            return True
+            
+    # 情況 B：使用者輸入大類 "5"，但航商 Excel 裡寫的是細分 "5.1"
+    if '.' not in input_cls and '.' in target_cls:
+        main_class = target_cls.split('.')[0]
+        if main_class == input_cls:
+            return True
+            
+    return False
+
+# 輔助函式：將任何輸入的 UN 號碼統一標準化成 4 碼字串
 def format_un_number(un_val):
     if pd.isna(un_val):
         return ""
@@ -116,8 +142,7 @@ else:
         
         with col1:
             st.markdown("### 1. 請輸入 Class 類別 (必填)")
-            input_class = st.text_input("Class", placeholder="例如: 1, 3, 9", label_visibility="collapsed").strip()
-            # 將使用者輸入的 Class 也清洗成純數字版本
+            input_class = st.text_input("Class", placeholder="例如: 1, 3, 5.1, 9", label_visibility="collapsed").strip()
             clean_input_class = clean_class_string(input_class)
             
         with col2:
@@ -143,12 +168,9 @@ else:
                         st.error(f"❌ 嚴重警告：在最新 IMDG Code 官方總表中，根本【查無此 UN 號碼：{input_un}】！")
                         is_valid_input = False
                     else:
-                        # 官方 Class 比對也使用清洗後的純數字版本進行安全比對
                         official_classes = [clean_class_string(c) for c in un_exists['Class'].tolist()]
-                        class_match = any(
-                            clean_input_class.startswith(c) or c.startswith(clean_input_class) 
-                            for c in official_classes if c
-                        )
+                        class_match = any(is_class_matching(clean_input_class, c) for c in official_classes if c)
+                        
                         if not class_match:
                             st.error(f"❌ 警告：官方總表中 UN {input_un} 對應的合法 Class 為 `{un_exists['Class'].tolist()}`。")
                             st.error(f"🚨 但您輸入的 Class 是 `{input_class}`，兩者完全對不上！")
@@ -163,7 +185,6 @@ else:
                 if is_valid_input:
                     st.markdown("---")
                     
-                    # 🎨 渲染第一層：官方大品名宣告卡片
                     if input_un and official_psn_en:
                         ch_display = f" / {official_psn_ch}" if official_psn_ch and official_psn_ch != "nan" else ""
                         st.markdown(f"""
@@ -185,15 +206,14 @@ else:
                             st.error(f"⚠️ 航商分頁 `{sheet_name}` 格式不符，請確認是否包含：UN號碼、Class、狀態、限制條件")
                             continue
                         
-                        # 💡 核心清洗：把航商 Excel 裡面的 Class (例如 Division 1.1) 轉成純數字 (1.1)
                         df['Clean_Class'] = df['Class'].apply(clean_class_string)
                         df['UN號碼'] = df['UN號碼'].apply(format_un_number)
                         df['狀態'] = df['狀態'].astype(str).str.strip()
                         df['限制條件'] = df['限制條件'].astype(str).str.strip()
 
-                        # 使用純數字版本進行精準對接
+                        # 💡 呼叫全新的全類別穿透演算法
                         match_class_df = df[
-                            df['Clean_Class'].apply(lambda x: clean_input_class.startswith(x) or x.startswith(clean_input_class))
+                            df['Clean_Class'].apply(lambda x: is_class_matching(clean_input_class, x))
                         ]
                         
                         entries_to_show = []
