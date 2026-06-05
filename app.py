@@ -1,91 +1,109 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import os
 
-st.set_page_config(page_title="航商 DG 查詢系統", layout="centered")
+st.set_page_index_config(page_title="各航商 DG 禁收清單查詢", layout="wide")
 st.title("🚢 各航商 DG 禁收清單查詢")
-st.caption("🔥 終極防呆版：優先判斷 Class 大原則 ➡️ 通過後才判斷特定 UN 號碼")
+st.caption("🔥 優先判斷 Class 大原則 ➡️ 通過後才判斷特定 UN 號碼")
 
-# 讓使用者輸入
-search_class = st.text_input("1. 請輸入 Class 類別 (例如: 1, 3, 5.1):").strip()
-search_un = st.text_input("2. 請輸入 UN 號碼 (例如: 1993, 3480):").strip()
+# 檢查檔案是否存在
+excel_file = "dg_list.xlsx"
+if not os.path.exists(excel_file):
+    # 彈性檢查子資料夾路徑
+    excel_file = os.path.join("DG_System", "dg_list.xlsx")
 
-if st.button("開始查詢", type="primary"):
-    if not search_class:
-        st.warning("請務必輸入【Class 類別】（因為系統需要先進行 Class 判定）！")
-    else:
-        try:
-            excel_file = "dg_list.xlsx"
-            results = []
+if not os.path.exists(excel_file):
+    st.error(f"❌ 找不到 dg_list.xlsx 檔案！請確認 Excel 檔案是否跟程式放在同一個資料夾。")
+else:
+    # 讀取資料庫，將所有欄位轉成文字以利比對
+    df = pd.read_excel(excel_file)
+    df['Class'] = df['Class'].astype(str).str.strip()
+    df['UN'] = df['UN'].astype(str).str.strip()
+    df['Is_Absolute_Prohibited'] = df['Is_Absolute_Prohibited'].astype(str).str.upper().str.strip()
 
-            # 自動讀取 Excel 裡所有的工作表 (各家船公司)
-            all_sheets = pd.read_excel(excel_file, sheet_name=None)
+    # 欄位輸入
+    st.markdown("### 1. 請輸入 Class 類別 (例如: 1, 1.1, 3, 5.1)")
+    input_class = st.text_input("Class", label_visibility="collapsed").strip()
 
-            for ocean_carrier, df in all_sheets.items():
-                # 確保欄位名稱乾淨
-                df.columns = df.columns.str.strip()
+    st.markdown("### 2. 請輸入 UN 號碼 (例如: 1993, 3480)")
+    input_un = st.text_input("UN Number", label_visibility="collapsed").strip()
 
-                # 【核心防呆】把所有欄位轉換成純文字字串，並去掉所有隱藏空格
-                df["Class"] = (
-                    df["Class"]
-                    .astype(str)
-                    .str.replace(r"\.0$", "", regex=True)
-                    .str.strip()
-                )
-                df["UN號碼"] = df["UN號碼"].astype(str).str.strip()
-                df["狀態"] = df["狀態"].astype(str).str.strip()
-                df["限制條件"] = df["限制條件"].astype(str).str.strip()
-
-                # 使用者輸入的 Class 也做標準化
-                target_class = str(search_class).replace(".0", "").strip()
-
-                # 預設放行狀態
-                status = "🟢 正常申報"
-                remark = "該航商清單未特別限制，依 IMDG 國際危規辦理。"
-
-                # ==========================================
-                # 【第一步：嚴格檢查 Class 大原則】
-                # ==========================================
-                # 尋找有沒有「Class 相同」且「UN號碼包含 所有/ALL」的整類禁收規則
-                class_block = df[
-                    (df["Class"] == target_class)
-                    & (df["UN號碼"].str.contains("所有|ALL|all", na=False))
+    if st.button("開始查詢", type="primary"):
+        if not input_class or not input_un:
+            st.warning("⚠️ 請同時輸入 Class 和 UN 號碼再進行查詢！")
+        else:
+            st.markdown("---")
+            st.markdown(f"### 🔍 查詢結果 (Class: `{input_class}` / UN: `{input_un}`)")
+            
+            # 找出所有不重複的航商
+            partners = df['Partner'].unique()
+            
+            # 用建立表格的方式呈現結果
+            result_data = []
+            
+            for partner in partners:
+                # 篩選該航商的資料
+                partner_df = df[df['Partner'] == partner]
+                
+                # 【核心邏輯升級】：支援子項目比對
+                # 如果使用者輸入 1.1，會去對抗 Excel 裡的 "1" 或 "1.1"
+                # 如果使用者輸入 1，會去對抗 Excel 裡的 "1" 或 "1.1"、"1.2" 等只要是 1 開頭的
+                match_class_df = partner_df[
+                    partner_df['Class'].apply(lambda x: input_class.startswith(x) or x.startswith(input_class))
                 ]
-
-                if not class_block.empty:
-                    # 如果找到了 Class 的全面禁收大原則，直接判定！
-                    status = class_block.iloc[0]["狀態"]
-                    remark = class_block.iloc[0]["限制條件"]
-
-                # ==========================================
-                # 【第二步：Class 通過，才檢查特定 UN 號碼】
-                # ==========================================
+                
+                if match_class_df.empty:
+                    # 如果連大類別都沒對到，預設為可收
+                    status = "🟢 正常收載"
+                    remarks = "Excel 中無此 Class 禁收限制"
                 else:
-                    if search_un:
-                        target_un = str(search_un).strip()
-                        # 在該 Class 內，尋找有沒有包含這個特定 UN 號碼的「點名限制」
-                        un_match = df[
-                            (df["Class"] == target_class)
-                            & (df["UN號碼"].str.contains(target_un, na=False))
-                        ]
-                        if not un_match.empty:
-                            status = un_match.iloc[0]["狀態"]
-                            remark = un_match.iloc[0]["限制條件"]
+                    # 檢查是否有該類別的「絕對禁收 (ALL)」
+                    absolute_row = match_class_df[
+                        (match_class_df['UN'].str.upper() == 'ALL') & 
+                        (match_class_df['Is_Absolute_Prohibited'] == 'TRUE')
+                    ]
+                    
+                    if not absolute_row.empty:
+                        status = "🔴 絕對禁收"
+                        remarks = absolute_row.iloc[0]['Remarks']
+                    else:
+                        # 如果不是絕對禁收，檢查特定 UN 號碼是否有在黑名單內
+                        un_match = False
+                        un_remarks = ""
+                        
+                        for _, row in match_class_df.iterrows():
+                            # 將 Excel 裡的 UN 欄位用逗號或空格拆開成清單
+                            un_list = [u.strip() for u in row['UN'].replace(',', ' ').split()]
+                            if input_un in un_list:
+                                un_match = True
+                                un_remarks = row['Remarks']
+                                break
+                        
+                        if un_match:
+                            status = "🔴 特定UN禁收"
+                            remarks = un_remarks
+                        else:
+                            status = "🟢 正常收載"
+                            # 拿該類別第一個備註當作提醒（例如：特殊文件審查等）
+                            remarks = match_class_df.iloc[0]['Remarks'] if pd.notna(match_class_df.iloc[0]['Remarks']) else "無特殊限制"
+                
+                result_data.append({
+                    "航商 (Partner)": partner,
+                    "收載狀態": status,
+                    "航商備註 / 限制條件": remarks
+                })
+            
+            # 轉成 Dataframe 並美化輸出
+            result_df = pd.DataFrame(result_data)
+            
+            # 根據狀態給予顏色高亮
+            def highlight_status(val):
+                if "🔴" in val:
+                    return 'background-color: #ffcccc; color: #cc0000; font-weight: bold;'
+                return 'background-color: #d4edda; color: #155724;'
 
-                # 收集這家船公司的結果
-                results.append(
-                    {
-                        "船公司": ocean_carrier,
-                        "檢查結果": status,
-                        "備註說明": remark,
-                    }
-                )
-
-            # 把最終對照結果用漂亮的表格秀在網頁上
-            res_df = pd.DataFrame(results)
-            st.write("### 🔍 查詢結果對照表")
-            st.dataframe(res_df, use_container_width=True)
-
-        except FileNotFoundError:
-            st.error(
-                "找不到 dg_list.xlsx 檔案！請確認 Excel 檔案是否跟程式放在同一個資料夾。"
+            st.dataframe(
+                result_df.style.applymap(highlight_status, subset=['收載狀態']),
+                use_container_width=True,
+                hide_index=True
             )
