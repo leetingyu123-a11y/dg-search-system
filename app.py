@@ -105,7 +105,7 @@ def is_class_matching(input_cls, target_cls):
             return True
     return False
 
-# 💡 NEW: Enhanced sub-risk tokenizer that processes numbers, "P", and full text strings safely
+# Extract clean subrisk tokens for internal logic matching
 def extract_subrisks_for_matching(subrisk_val):
     if pd.isna(subrisk_val):
         return []
@@ -120,7 +120,7 @@ def extract_subrisks_for_matching(subrisk_val):
             cleaned_tokens.append("P")
     return cleaned_tokens
 
-# 💡 NEW: Format function to prettify display string, converting 'P' to '海汙' and preserving notes
+# Format function to prettify display string, converting 'P' to '海汙' and preserving notes
 def format_subrisk_display(subrisk_val):
     if pd.isna(subrisk_val):
         return ""
@@ -128,7 +128,6 @@ def format_subrisk_display(subrisk_val):
     if val_str.lower() == 'nan' or val_str == "":
         return ""
     
-    # Replace capital P with traditional Chinese designation, handling boundaries
     formatted = re.sub(r'\bP\b', '海汙 (Marine Pollutant)', val_str)
     return formatted
 
@@ -162,8 +161,13 @@ else:
             try:
                 master_df = pd.read_excel(master_file, dtype=str)
                 master_df.columns = master_df.columns.astype(str).str.strip()
-                if 'UN Number' in master_df.columns and 'Class' in master_df.columns:
-                    master_df['UN Number'] = master_df['UN Number'].apply(format_un_number)
+                if 'UN Number' in master_df.columns or 'UN' in master_df.columns:
+                    # 💡 Smart alignment for Master file column names
+                    un_col = [c for c in master_df.columns if c.lower() in ['un number', 'un', 'un號碼']][0]
+                    cls_col = [c for c in master_df.columns if any(k in c.lower() for k in ['class', 'division', '類別'])][0]
+                    
+                    master_df['UN Number'] = master_df[un_col].apply(format_un_number)
+                    master_df['Class'] = master_df[cls_col]
                     
                     sub_risk_col_name = None
                     for col in master_df.columns:
@@ -249,9 +253,7 @@ else:
                     raw_subrisk = record["sub_risk"]
                     current_psn = record["psn"]
                     
-                    # 💡 NEW: Extract clean subrisk tokens for internal logic matching
                     master_subrisk_list = extract_subrisks_for_matching(raw_subrisk)
-                    # 💡 NEW: Generate beautiful front-end display text (translating P to Chinese)
                     display_subrisk_text = format_subrisk_display(raw_subrisk)
                     
                     clean_current_class = clean_class_string(current_class)
@@ -274,13 +276,15 @@ else:
                         
                         col_mapping = {}
                         for c in df.columns:
-                            if c in ['UN號碼', 'UN Number', 'UN Number ']: col_mapping['UN'] = c
-                            if c in ['Class', 'Class ']: col_mapping['Class'] = c
-                            if c in ['狀態', 'Prohibited', 'Prohibited ']: col_mapping['Status'] = c
-                            if c in ['次要風險', 'Sub Risk', 'Subsidiary Risk', 'SubRisk']: col_mapping['SubRisk'] = c
+                            c_lower = c.lower()
+                            if any(k in c_lower for k in ['un號碼', 'un number', 'un_number']): col_mapping['UN'] = c
+                            # 💡 UPDATE: Smart fuzzy match to support "Class/Division", "Class", or "類別"
+                            if any(k in c_lower for k in ['class/division', 'class', 'division', '類別']): col_mapping['Class'] = c
+                            if any(k in c_lower for k in ['狀態', 'prohibited', 'status']): col_mapping['Status'] = c
+                            if any(k in c_lower for k in ['次要風險', 'sub risk', 'subsidiary risk', 'subrisk']): col_mapping['SubRisk'] = c
                         
                         if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Status' not in col_mapping:
-                            st.error(f"⚠️ Sheet `{sheet_name}` format error. Missing [UN Number], [Class], or [Prohibited]")
+                            st.error(f"⚠️ Sheet `{sheet_name}` format error. Missing columns. Found: {list(df.columns)}")
                             continue
                         
                         remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
