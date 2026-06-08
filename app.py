@@ -125,7 +125,7 @@ def format_subrisk_display(subrisk_val):
     val_str = str(subrisk_val).strip()
     if val_str.lower() == 'nan' or val_str == "":
         return ""
-    formatted = re.sub(r'\bP\b', '海汙 (Marine Pollutant)', val_str)
+    formatted = re.sub(r'\bP\b', 'Marine Pollutant (MP)', val_str)
     return formatted
 
 def format_un_number(un_val):
@@ -190,7 +190,7 @@ else:
             raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
         with col3:
-            st.markdown("### 3. Filter by Carrier ")
+            st.markdown("### 3. Filter by Carrier")
             partner_options = ["ALL CARRIERS"] + all_partners
             selected_partner = st.selectbox("Partner Filter", partner_options, label_visibility="collapsed")
 
@@ -199,9 +199,12 @@ else:
             is_valid_input = True
             matched_master_records = []
             
-            # 💡 【最新防呆鎖】如果是 UN 1950 或 UN 2037，強制檢查有沒有填寫 Class
-            if input_un in ["1950", "2037"] and not final_class:
-                st.error(f"❌ 攔截警告：UN {input_un} 包含多種 Class 分類 (2.1/2.2/2.3)，【必須】填寫 Class 欄位才能進行搜尋！")
+            # 💡 【Multi-Class UN Block List Setup】
+            # Future Expansion: Easily add any other multi-class UNs right into this array.
+            MULTI_CLASS_UNS = ["1950", "2037"]
+            
+            if input_un in MULTI_CLASS_UNS and not final_class:
+                st.error(f"❌ INTERCEPT WARNING: UN {input_un} contains multiple regulatory classifications (e.g., 2.1/2.2/2.3). You MUST enter the 'Class / Division' field to perform this search!")
                 is_valid_input = False
                 
             if is_valid_input and not input_un and not final_class:
@@ -225,7 +228,7 @@ else:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in the official IMDG Code Master Database!")
                     is_valid_input = False
                 else:
-                    # 🌟 【Packing Group 去重機制】主表裡如果有多個 PG，只要主危、副危、品名一樣就合為一筆
+                    # 🌟 Packing Group De-duplication Mechanism
                     unique_un_exists = un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk', 'PSN'])
                     
                     for _, master_row in unique_un_exists.iterrows():
@@ -391,7 +394,7 @@ else:
                                 if carrier_record_cls and row['Clean_UN'] != '':
                                     un_display = f"UN {row['Clean_UN']} (Class {carrier_record_cls})"
                                 
-                                # 💡 完美分流三色燈號邏輯
+                                # Three-Tier Flow Logic Check
                                 is_prohibited = any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]) and (p_text != 'NAN' and p_text != '')
                                 is_has_remark = any(k in r_text for k in ["🟡", "YES", "TRUE"]) and (r_text != 'NAN' and r_text != '')
                                 
@@ -402,7 +405,6 @@ else:
                                     border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
                                     display_status = "🟡 Conditional Acceptance / Review Remarks"
                                 else:
-                                    # 🟢 雙空值但存在於 dg_list 內：亮綠燈 + 完美吐出提醒備註
                                     border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
                                     display_status = "🟢 Standard Acceptance (See Notice)"
 
