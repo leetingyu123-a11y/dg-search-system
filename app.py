@@ -386,7 +386,7 @@ else:
                                 
                                 # 💡 NEW THREE-TIER COLOR LOGIC
                                 is_prohibited = any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]) and (p_text != 'NAN' and p_text != '')
-                                is_has_remark = any(k in r_text for k in ["🟡", "YES", "TRUE"]) and (r_text != 'NAN' and r_text != '')
+                                is_has_remark = any(k in r_text for k in ["🟢", "YES", "TRUE"]) and (r_text != 'NAN' and r_text != '')
                                 
                                 if is_prohibited or has_global_prohibited:
                                     border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
