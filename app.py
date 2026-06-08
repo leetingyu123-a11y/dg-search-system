@@ -220,7 +220,10 @@ else:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in the official IMDG Code Master Database!")
                     is_valid_input = False
                 else:
-                    for _, master_row in un_exists.iterrows():
+                    # 🌟 核心修改：針對主表的 Class, SubRisk, PSN 進行去重，自動過濾掉重疊的 Packing Group
+                    unique_un_exists = un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk', 'PSN'])
+                    
+                    for _, master_row in unique_un_exists.iterrows():
                         db_class = str(master_row['Class']).strip()
                         db_subrisk = str(master_row['Detected_SubRisk']).strip() if pd.notna(master_row['Detected_SubRisk']) else ""
                         db_psn = str(master_row['PSN']).strip() if 'PSN' in master_row else ""
@@ -384,9 +387,9 @@ else:
                                 if carrier_record_cls and row['Clean_UN'] != '':
                                     un_display = f"UN {row['Clean_UN']} (Class {carrier_record_cls})"
                                 
-                                # 💡 NEW THREE-TIER COLOR LOGIC
+                                # 💡 完美分流三色燈號邏輯
                                 is_prohibited = any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]) and (p_text != 'NAN' and p_text != '')
-                                is_has_remark = any(k in r_text for k in ["🟢", "YES", "TRUE"]) and (r_text != 'NAN' and r_text != '')
+                                is_has_remark = any(k in r_text for k in ["🟡", "YES", "TRUE"]) and (r_text != 'NAN' and r_text != '')
                                 
                                 if is_prohibited or has_global_prohibited:
                                     border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
@@ -395,7 +398,7 @@ else:
                                     border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
                                     display_status = "🟡 Conditional Acceptance / Review Remarks"
                                 else:
-                                    # 💡 GREEN LIGHT WITH REMARK: Both blank but item exists in table!
+                                    # 🟢 雙空值但存在於 dg_list 內：亮綠燈 + 完美吐出提醒備註
                                     border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
                                     display_status = "🟢 Standard Acceptance (See Notice)"
 
