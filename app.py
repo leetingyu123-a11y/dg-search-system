@@ -199,7 +199,12 @@ else:
             is_valid_input = True
             matched_master_records = []
             
-            if not input_un and not final_class:
+            # 💡 【最新防呆鎖】如果是 UN 1950 或 UN 2037，強制檢查有沒有填寫 Class
+            if input_un in ["1950", "2037"] and not final_class:
+                st.error(f"❌ 攔截警告：UN {input_un} 包含多種 Class 分類 (2.1/2.2/2.3)，【必須】填寫 Class 欄位才能進行搜尋！")
+                is_valid_input = False
+                
+            if is_valid_input and not input_un and not final_class:
                 st.warning("⚠️ Action Required: Please enter at least a UN Number or a Class/Division to perform search.")
                 is_valid_input = False
                 
@@ -220,7 +225,7 @@ else:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in the official IMDG Code Master Database!")
                     is_valid_input = False
                 else:
-                    # 🌟 核心修改：針對主表的 Class, SubRisk, PSN 進行去重，自動過濾掉重疊的 Packing Group
+                    # 🌟 【Packing Group 去重機制】主表裡如果有多個 PG，只要主危、副危、品名一樣就合為一筆
                     unique_un_exists = un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk', 'PSN'])
                     
                     for _, master_row in unique_un_exists.iterrows():
@@ -282,7 +287,6 @@ else:
                             if any(k in c_lower for k in ['has remark', 'hasremark', '備註狀態']): col_mapping['HasRemark'] = c
                             if any(k in c_lower for k in ['次要風險', 'sub risk', 'subsidiary risk', 'subrisk']): col_mapping['SubRisk'] = c
                         
-                        # Fallback for old status columns if new structure isn't fully defined yet
                         if 'Prohibited' not in col_mapping:
                             for c in df.columns:
                                 if 'status' in c.lower(): col_mapping['Prohibited'] = c
