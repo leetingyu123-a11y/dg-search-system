@@ -58,7 +58,6 @@ st.markdown("""
         font-weight: bold;
         color: #0f172a;
     }
-    /* 💡 Footer style for copyright declaration */
     .footer-box {
         text-align: center;
         padding: 30px 0px 10px 0px;
@@ -82,15 +81,15 @@ master_file = "imdg_master.xlsx"
 if not os.path.exists(master_file):
     master_file = os.path.join("DG_System", "imdg_master.xlsx")
 
-# Clean Class strings (e.g., "Division 1.4" -> "1.4", "Class 3" -> "3")
 def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
     val_str = str(class_val).strip()
+    if val_str.endswith('.0'):
+        val_str = val_str[:-2]
     match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
     return match.group(0) if match else val_str
 
-# Bi-directional Class family penetration algorithm
 def is_class_matching(input_cls, target_cls):
     if not input_cls or not target_cls:
         return False
@@ -106,7 +105,33 @@ def is_class_matching(input_cls, target_cls):
             return True
     return False
 
-# High-efficiency zero-padding for UN Number
+# 💡 NEW: Enhanced sub-risk tokenizer that processes numbers, "P", and full text strings safely
+def extract_subrisks_for_matching(subrisk_val):
+    if pd.isna(subrisk_val):
+        return []
+    val_str = str(subrisk_val).strip()
+    tokens = val_str.replace('/', ' ').replace(',', ' ').replace('、', ' ').split()
+    cleaned_tokens = []
+    for t in tokens:
+        cleaned = clean_class_string(t)
+        if cleaned:
+            cleaned_tokens.append(cleaned)
+        elif t.strip() == "P":
+            cleaned_tokens.append("P")
+    return cleaned_tokens
+
+# 💡 NEW: Format function to prettify display string, converting 'P' to '海汙' and preserving notes
+def format_subrisk_display(subrisk_val):
+    if pd.isna(subrisk_val):
+        return ""
+    val_str = str(subrisk_val).strip()
+    if val_str.lower() == 'nan' or val_str == "":
+        return ""
+    
+    # Replace capital P with traditional Chinese designation, handling boundaries
+    formatted = re.sub(r'\bP\b', '海汙 (Marine Pollutant)', val_str)
+    return formatted
+
 def format_un_number(un_val):
     if pd.isna(un_val):
         return ""
@@ -126,7 +151,7 @@ def format_un_number(un_val):
     return val_str
 
 if not os.path.exists(excel_file):
-    st.error("❌ CRITICAL ERROR: dg_list.xlsx not found! Please ensure the Excel file is correctly uploaded to GitHub.")
+    st.error("❌ CRITICAL ERROR: dg_list.xlsx not found!")
 else:
     try:
         excel_sheets = pd.read_excel(excel_file, sheet_name=None)
@@ -139,9 +164,21 @@ else:
                 master_df.columns = master_df.columns.astype(str).str.strip()
                 if 'UN Number' in master_df.columns and 'Class' in master_df.columns:
                     master_df['UN Number'] = master_df['UN Number'].apply(format_un_number)
+                    
+                    sub_risk_col_name = None
+                    for col in master_df.columns:
+                        if col.lower() in ['sub risk', 'subrisk', '次要風險', 'subsidiary risk']:
+                            sub_risk_col_name = col
+                            break
+                    
+                    if sub_risk_col_name:
+                        master_df['Detected_SubRisk'] = master_df[sub_risk_col_name]
+                    else:
+                        master_df['Detected_SubRisk'] = ""
+                        
                     has_master = True
             except Exception as e:
-                st.warning(f"⚠️ Warning: imdg_master.xlsx master database failed to load. Error: {e}")
+                st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
         # Search Query Interface Layout
         col1, col2, col3 = st.columns(3)
@@ -150,7 +187,7 @@ else:
             user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
         with col2:
             st.markdown("### 2. Enter UN Number")
-            raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 3481", label_visibility="collapsed").strip()
+            raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
         with col3:
             st.markdown("### 3. Filter by Carrier ")
@@ -159,23 +196,22 @@ else:
 
         if st.button("Search Database", type="primary", use_container_width=True):
             final_class = user_input_class
-            official_psn_en = ""
             is_valid_input = True
+            matched_master_records = []
             
             if not input_un and not final_class:
                 st.warning("⚠️ Action Required: Please enter at least a UN Number or a Class/Division to perform search.")
                 is_valid_input = False
                 
-            # Strict Boundary Check for IMO DG Classes 1 to 9
             if is_valid_input and final_class:
                 cleaned_num_str = clean_class_string(final_class)
                 try:
                     class_num = float(cleaned_num_str)
                     if class_num < 1.0 or class_num >= 10.0:
-                        st.error("❌ Input Error: IMDG Code Dangerous Goods Classes only range from 1 to 9. Class 10 or above does not exist.")
+                        st.error("❌ Input Error: IMDG Code Dangerous Goods Classes only range from 1 to 9.")
                         is_valid_input = False
                 except ValueError:
-                    st.error("⚠️ Invalid Format: Class parameters must be numeric numbers (e.g., enter '3' or '2.1' instead of letters).")
+                    st.error("⚠️ Invalid Format: Class parameters must be numeric numbers.")
                     is_valid_input = False
 
             if is_valid_input and input_un and has_master:
@@ -184,176 +220,221 @@ else:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in the official IMDG Code Master Database!")
                     is_valid_input = False
                 else:
-                    official_class_from_db = str(un_exists.iloc[0]['Class']).strip()
-                    if 'PSN' in un_exists.columns:
-                        official_psn_en = str(un_exists.iloc[0]['PSN']).strip()
-                    if not final_class:
-                        final_class = official_class_from_db
-                        st.info(f"💡 System auto-identified Regulatory Category: Class `{final_class}`")
+                    for _, master_row in un_exists.iterrows():
+                        db_class = str(master_row['Class']).strip()
+                        db_subrisk = str(master_row['Detected_SubRisk']).strip() if pd.notna(master_row['Detected_SubRisk']) else ""
+                        db_psn = str(master_row['PSN']).strip() if 'PSN' in master_row else ""
                         
-                        try:
-                            if float(clean_class_string(final_class)) < 1.0 or float(clean_class_string(final_class)) >= 10.0:
-                                st.error("❌ System Error: Auto-identified Class falls outside the 1-9 regulatory boundary.")
-                                is_valid_input = False
-                        except ValueError:
-                            is_valid_input = False
-                    else:
-                        clean_user_cls = clean_class_string(final_class)
-                        official_classes_clean = [clean_class_string(c) for c in un_exists['Class'].tolist()]
-                        class_match = any(is_class_matching(clean_user_cls, c) for c in official_classes_clean if c)
-                        if not class_match:
-                            st.error(f"❌ Mismatch Warning: Official IMDG lists UN {input_un} under Class `{un_exists['Class'].tolist()}`.")
-                            st.error(f"🚨 Your input Class was `{user_input_class}`. Please double check regulatory data.")
-                            is_valid_input = False
+                        if not final_class:
+                            matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
+                        else:
+                            clean_user_cls = clean_class_string(final_class)
+                            if is_class_matching(clean_user_cls, clean_class_string(db_class)):
+                                matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
+                    
+                    if not matched_master_records and final_class:
+                        st.error(f"❌ Mismatch Warning: Official IMDG lists UN {input_un} under Class `{un_exists['Class'].tolist()}`.")
+                        is_valid_input = False
+                    elif not final_class and len(matched_master_records) > 1:
+                        st.info(f"💡 Multi-Category Alert: UN {input_un} contains {len(matched_master_records)} distinct regulatory classifications.")
 
-            # Begin matching calculations only when validation passes successfully
-            if is_valid_input:
-                clean_final_class = clean_class_string(final_class)
+            if is_valid_input and not input_un and final_class:
+                matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Category Search"})
+
+            if is_valid_input and matched_master_records:
                 st.markdown("---")
-                if input_un and official_psn_en:
-                    st.markdown(f"""
-                        <div class="psn-card">
-                            <div style="font-size: 16px; opacity: 0.8; font-weight: bold; margin-bottom: 5px;">🌍 IMDG Code Regulatory Identification:</div>
-                            <div style="font-size: 28px; font-weight: bold; line-height: 1.3;">UN {input_un} - {official_psn_en}</div>
-                            <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Official Classification: Class {final_class}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
                 
-                search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
-                
-                for sheet_name in search_targets:
-                    df = excel_sheets[sheet_name]
-                    df.columns = df.columns.astype(str).str.strip()
+                for record in matched_master_records:
+                    current_class = record["class"]
+                    raw_subrisk = record["sub_risk"]
+                    current_psn = record["psn"]
                     
-                    col_mapping = {}
-                    for c in df.columns:
-                        if c in ['UN號碼', 'UN Number', 'UN Number ']: col_mapping['UN'] = c
-                        if c in ['Class', 'Class ']: col_mapping['Class'] = c
-                        if c in ['狀態', 'Prohibited', 'Prohibited ']: col_mapping['Status'] = c
+                    # 💡 NEW: Extract clean subrisk tokens for internal logic matching
+                    master_subrisk_list = extract_subrisks_for_matching(raw_subrisk)
+                    # 💡 NEW: Generate beautiful front-end display text (translating P to Chinese)
+                    display_subrisk_text = format_subrisk_display(raw_subrisk)
                     
-                    if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Status' not in col_mapping:
-                        st.error(f"⚠️ Sheet `{sheet_name}` format error. Must contain headers: [UN Number], [Class], and [Prohibited]")
-                        continue
+                    clean_current_class = clean_class_string(current_class)
+                    subrisk_display = f" (Sub Risk: {display_subrisk_text})" if display_subrisk_text else ""
                     
-                    remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
+                    if input_un and current_psn:
+                        st.markdown(f"""
+                            <div class="psn-card">
+                                <div style="font-size: 16px; opacity: 0.8; font-weight: bold; margin-bottom: 5px;">🌍 IMDG Code Regulatory Identification:</div>
+                                <div style="font-size: 28px; font-weight: bold; line-height: 1.3;">UN {input_un} - {current_psn}</div>
+                                <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Official Classification: Class {current_class}{subrisk_display}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
                     
-                    df['Clean_UN'] = df[col_mapping['UN']].fillna('').apply(format_un_number)
-                    df['Clean_Class'] = df[col_mapping['Class']].apply(clean_class_string)
-                    df['Clean_Status'] = df[col_mapping['Status']].fillna('').astype(str).str.strip()
+                    search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
+                    
+                    for sheet_name in search_targets:
+                        df = excel_sheets[sheet_name]
+                        df.columns = df.columns.astype(str).str.strip()
+                        
+                        col_mapping = {}
+                        for c in df.columns:
+                            if c in ['UN號碼', 'UN Number', 'UN Number ']: col_mapping['UN'] = c
+                            if c in ['Class', 'Class ']: col_mapping['Class'] = c
+                            if c in ['狀態', 'Prohibited', 'Prohibited ']: col_mapping['Status'] = c
+                            if c in ['次要風險', 'Sub Risk', 'Subsidiary Risk', 'SubRisk']: col_mapping['SubRisk'] = c
+                        
+                        if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Status' not in col_mapping:
+                            st.error(f"⚠️ Sheet `{sheet_name}` format error. Missing [UN Number], [Class], or [Prohibited]")
+                            continue
+                        
+                        remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
+                        
+                        df['Clean_UN'] = df[col_mapping['UN']].fillna('').apply(format_un_number)
+                        df['Clean_Class'] = df[col_mapping['Class']].apply(clean_class_string)
+                        df['Clean_Status'] = df[col_mapping['Status']].fillna('').astype(str).str.strip()
+                        df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip() if 'SubRisk' in col_mapping else ""
 
-                    matched_rows = []
-                    global_class_remarks = []
-                    has_global_prohibited = False
-                    global_prohibited_row = None
+                        matched_rows = []
+                        global_class_remarks = []
+                        has_global_prohibited = False
+                        global_prohibited_row = None
 
-                    # 1. Scan for Global Class Rules (where UN Number is blank or 'ALL')
-                    if clean_final_class:
-                        global_rules = df[
-                            ((df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')) & 
-                            (df['Clean_Class'].apply(lambda x: is_class_matching(clean_final_class, x)))
-                        ]
-                        for _, g_row in global_rules.iterrows():
-                            if any(k in g_row['Clean_Status'].upper() for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
-                                has_global_prohibited = True
-                                global_prohibited_row = g_row
+                        # 1. Global Class Rules Scanning & Cross Sub-Risk Intersection Validation
+                        if clean_current_class:
+                            global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
                             
-                            for r_col in remark_cols:
-                                r_val = str(g_row[r_col]).strip()
-                                if r_val and r_val.lower() != 'nan' and r_val != '':
-                                    global_class_remarks.append({"col_name": f"General Policy ({g_row[col_mapping['Class']]})", "text": r_val})
+                            for _, g_row in global_lines.iterrows():
+                                carrier_restricted_cls = g_row['Clean_Class']
+                                is_prohibited_status = any(k in g_row['Clean_Status'].upper() for k in ["🔴", "禁收", "YES", "PROHIBITED"])
+                                
+                                main_class_hit = is_class_matching(clean_current_class, carrier_restricted_cls)
+                                
+                                sub_risk_hit = False
+                                if master_subrisk_list and carrier_restricted_cls:
+                                    if any(is_class_matching(sr, carrier_restricted_cls) for sr in master_subrisk_list if sr != "P"):
+                                        sub_risk_hit = True
+                                
+                                if main_class_hit or sub_risk_hit:
+                                    if is_prohibited_status:
+                                        has_global_prohibited = True
+                                        global_prohibited_row = g_row
+                                    
+                                    for r_col in remark_cols:
+                                        r_val = str(g_row[r_col]).strip()
+                                        if r_val and r_val.lower() != 'nan' and r_val != '':
+                                            trigger_source = "Main Class" if main_class_hit else f"Sub Risk '{carrier_restricted_cls}'"
+                                            global_class_remarks.append({
+                                                "col_name": f"General Policy Banned via {trigger_source}", 
+                                                "text": r_val
+                                            })
 
-                    # 2. Routing Logic based on User Input Type
-                    if not input_un:
-                        if has_global_prohibited:
-                            matched_rows = [global_prohibited_row]
+                        # 2. Precision Row Match Routing
+                        if not input_un:
+                            if has_global_prohibited: matched_rows = [global_prohibited_row]
                         else:
-                            matched_rows = []
-                    else:
-                        exact_match = df[df['Clean_UN'] == input_un]
-                        if not exact_match.empty:
-                            for _, row in exact_match.iterrows():
-                                matched_rows.append(row)
-                        elif has_global_prohibited:
-                            matched_rows = [global_prohibited_row]
+                            exact_match = df[df['Clean_UN'] == input_un]
+                            if not exact_match.empty:
+                                for _, row in exact_match.iterrows():
+                                    carrier_cls = row['Clean_Class']
+                                    carrier_subrisk = clean_class_string(row['Clean_SubRisk'])
+                                    
+                                    if carrier_cls and not is_class_matching(clean_current_class, carrier_cls):
+                                        continue
+                                        
+                                    if carrier_subrisk and master_subrisk_list:
+                                        if carrier_subrisk not in master_subrisk_list:
+                                            continue
+                                            
+                                    matched_rows.append(row)
+                                    
+                                if not matched_rows and has_global_prohibited:
+                                    matched_rows = [global_prohibited_row]
+                            elif has_global_prohibited:
+                                matched_rows = [global_prohibited_row]
 
-                    # --- Render Card Output ---
-                    if not matched_rows:
-                        if global_class_remarks:
-                            st.markdown(f"""
-                                <div class="partner-card" style="border-left-color: #f59e0b;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Class Ref: {user_input_class})</span>
-                                        <span class="status-badge" style="background-color: #fef3c7; color: #92400e;">🟡 Conditional Acceptance</span>
-                                    </div>
-                                    <div style="margin-top: 10px;">
-                                        <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 General Class Rules Notice:</div>
-                                        <div class="remark-box">
-                                            {"".join([f'<div class="remark-header" style="color:#b45309;">⚠️ [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in global_class_remarks])}
+                        # --- Card Rendering ---
+                        if not matched_rows:
+                            if global_class_remarks:
+                                st.markdown(f"""
+                                    <div class="partner-card" style="border-left-color: #ef4444;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span class="partner-title">🏢 Carrier: {sheet_name} (Class Hit Policy)</span>
+                                            <span class="status-badge" style="background-color: #fee2e2; color: #991b1b;">🔴 Strictly Prohibited</span>
+                                        </div>
+                                        <div style="margin-top: 10px;">
+                                            <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">🚨 Triggered Block Policy Notice:</div>
+                                            <div class="remark-box">
+                                                {"".join([f'<div class="remark-header" style="color:#ef4444;">⚠️ [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in global_class_remarks])}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                        else:
-                            st.markdown(f"""
-                                <div class="partner-card" style="border-left-color: #10b981;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (UN Ref: {input_un if input_un else "Class " + user_input_class})</span>
-                                        <span class="status-badge" style="background-color: #d1fae5; color: #065f46;">🟢 Standard Acceptance</span>
-                                    </div>
-                                    <div style="margin-top: 10px;">
-                                        <div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                    else:
-                        for row in matched_rows:
-                            status_text = row['Clean_Status']
-                            un_display = row['Clean_UN'] if row['Clean_UN'] != '' else f"Class {user_input_class} Universal Policy"
-                            
-                            if any(k in status_text.upper() for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
-                                border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
-                                display_status = "🔴 Strictly Prohibited"
+                                """, unsafe_allow_html=True)
                             else:
-                                border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
-                                display_status = "🟡 Conditional Acceptance / Review Remarks"
-
-                            collected_remarks = []
-                            for r_col in remark_cols:
-                                r_val = str(row[r_col]).strip()
-                                if r_val and r_val.lower() != 'nan' and r_val != '':
-                                    collected_remarks.append({"col_name": r_col, "text": r_val})
-
-                            combined_remarks = []
-                            combined_remarks.extend(collected_remarks)
-                            for g_rem in global_class_remarks:
-                                if g_rem["text"] not in [c["text"] for c in combined_remarks]:
-                                    combined_remarks.append(g_rem)
-
-                            st.markdown(f"""
-                                <div class="partner-card" style="border-left-color: {border_color};">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
-                                        <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
-                                    </div>
-                                    <div style="margin-top: 10px;">
-                                        <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 Comprehensive Carrier Remarks:</div>
-                                        <div class="remark-box">
-                                            {"".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in combined_remarks]) if combined_remarks else '<div class="remark-line">Prohibited without additional conditions.</div>'}
+                                st.markdown(f"""
+                                    <div class="partner-card" style="border-left-color: #10b981;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span class="partner-title">🏢 Carrier: {sheet_name} (UN Ref: {input_un if input_un else "Class " + current_class})</span>
+                                            <span class="status-badge" style="background-color: #d1fae5; color: #065f46;">🟢 Standard Acceptance</span>
+                                        </div>
+                                        <div style="margin-top: 10px;">
+                                            <div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>
                                         </div>
                                     </div>
-                                </div>
-                            """, unsafe_allow_html=True)
+                                """, unsafe_allow_html=True)
+                        else:
+                            for row in matched_rows:
+                                status_text = row['Clean_Status']
+                                carrier_record_cls = row[col_mapping['Class']] if pd.notna(row[col_mapping['Class']]) else ""
+                                un_display = row['Clean_UN'] if row['Clean_UN'] != '' else f"Class {current_class} Universal Policy"
+                                if carrier_record_cls and row['Clean_UN'] != '':
+                                    un_display = f"UN {row['Clean_UN']} (Class {carrier_record_cls})"
+                                
+                                is_prohibited = any(k in status_text.upper() for k in ["🔴", "禁收", "YES", "PROHIBITED"]) or has_global_prohibited
+                                
+                                if is_prohibited:
+                                    border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
+                                    display_status = "🔴 Strictly Prohibited"
+                                else:
+                                    border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
+                                    display_status = "🟡 Conditional Acceptance / Review Remarks"
+
+                                collected_remarks = []
+                                for r_col in remark_cols:
+                                    r_val = str(row[r_col]).strip()
+                                    if r_val and r_val.lower() != 'nan' and r_val != '':
+                                        collected_remarks.append({"col_name": r_col, "text": r_val})
+
+                                combined_remarks = []
+                                combined_remarks.extend(collected_remarks)
+                                for g_rem in global_class_remarks:
+                                    if g_rem["text"] not in [c["text"] for c in combined_remarks]:
+                                        combined_remarks.append(g_rem)
+
+                                st.markdown(f"""
+                                    <div class="partner-card" style="border-left-color: {border_color};">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
+                                            <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
+                                        </div>
+                                        <div style="margin-top: 10px;">
+                                            <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 Comprehensive Carrier Remarks:</div>
+                                            <div class="remark-box">
+                                                {"".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in combined_remarks]) if combined_remarks else '<div class="remark-line">Prohibited without additional conditions.</div>'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                st.markdown("<br><br>", unsafe_allow_html=True)
                             
     except Exception as e:
         st.error(f"❌ File reading failed. Error message: {e}")
 
 # ==============================================================================
-# 💡 FOOTER SECTION: Copyright Declaration
+# FOOTER SECTION: Copyright & Confidentiality Declaration
 # ==============================================================================
-# This creates a permanent, clean centered footer at the very bottom of the page.
 st.markdown("""
     <div class="footer-box">
-        <span style="color: #e11d48; font-weight: bold;">⚠️ INTERNAL USE ONLY<br>⚠️ INTERNAL USE ONLY<br>⚠️ INTERNAL USE ONLY<br>– DO NOT DISTRIBUTE EXTERNALLY</span><br>
-        Copyright © 2026 IAL DG TEAM. All Rights Reserved.
+        <div style="color: #e11d48; font-weight: bold; margin-bottom: 5px;">
+            ⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY
+        </div>
+        <div>
+            Copyright © 2026 IAL DG TEAM. All Rights Reserved.
+        </div>
     </div>
     """, unsafe_allow_html=True)
