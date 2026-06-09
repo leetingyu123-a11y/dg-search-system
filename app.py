@@ -38,6 +38,7 @@ st.markdown("""
         border-radius: 6px;
         border: 1px solid #e2e8f0;
         margin-top: 8px;
+        margin-bottom: 8px;
     }
     .remark-line {
         font-size: 20px !important; 
@@ -67,7 +68,6 @@ st.markdown("""
         border-top: 1px solid #e2e8f0;
         margin-top: 50px;
     }
-    /* Style optimization for st.expander inside cards */
     .streamlit-expanderHeader {
         font-size: 16px !important;
         font-weight: bold !important;
@@ -196,15 +196,15 @@ else:
             except Exception as e:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
-        # 🌟 SWAPPED INTERFACE: 1. UN Number Input | 2. Class Input
+        # Interface Layout: Class on Left | UN Number on Right
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown("### 1. Enter UN Number")
+            st.markdown("### 1. Enter Class / Division")
+            user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
+        with col2:
+            st.markdown("### 2. Enter UN Number")
             raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
-        with col2:
-            st.markdown("### 2. Enter Class / Division")
-            user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
         with col3:
             st.markdown("### 3. Filter by Carrier")
             partner_options = ["ALL CARRIERS"] + all_partners
@@ -324,9 +324,14 @@ else:
                         df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip().apply(clean_class_string) if 'SubRisk' in col_mapping else ""
 
                         carrier_matched_rows = []
-                        combined_remarks = []
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
+
+                        # 分流水桶
+                        has_remark_list = []      # 直接攤開
+                        specific_remark_list = []  # 直接攤開
+                        subrisk_policy_list = []   # 要折疊
+                        global_policy_list = []    # 要折疊
 
                         # 1. Check Exact UN Matches First
                         if input_un:
@@ -364,12 +369,19 @@ else:
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        if r_val not in [c["text"] for c in combined_remarks]:
-                                            if carrier_restricted_cls == 'ALL':
-                                                label = "Universal DG Policy"
+                                        if carrier_restricted_cls == 'ALL':
+                                            label = "Universal DG Policy"
+                                            if r_val not in [c["text"] for c in global_policy_list]:
+                                                global_policy_list.append({"col_name": label, "text": r_val})
+                                        else:
+                                            if main_class_hit:
+                                                label = "Main Class Policy"
+                                                if r_val not in [c["text"] for c in global_policy_list]:
+                                                    global_policy_list.append({"col_name": label, "text": r_val})
                                             else:
-                                                label = "Main Class Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
-                                            combined_remarks.append({"col_name": label, "text": r_val})
+                                                label = f"Sub Risk '{hit_subrisk_val}' Restriction"
+                                                if r_val not in [c["text"] for c in subrisk_policy_list]:
+                                                    subrisk_policy_list.append({"col_name": label, "text": r_val})
 
                         # 3. Compile Status and Extracted Row Details
                         if carrier_matched_rows:
@@ -387,11 +399,19 @@ else:
                                 if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
                                     is_any_row_remarked = True
                                     
+                                # 狀態提示（Has Remark）
+                                if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
+                                    hr_val = str(row[col_mapping['HasRemark']]).strip()
+                                    if hr_val and hr_val.lower() != 'nan' and hr_val not in [c["text"] for c in has_remark_list]:
+                                        has_remark_list.append({"col_name": "Has Remark", "text": hr_val})
+
                                 for r_col in remark_cols:
+                                    if 'HasRemark' in col_mapping and r_col == col_mapping['HasRemark']:
+                                        continue
                                     r_val = str(row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        if r_val not in [c["text"] for c in combined_remarks]:
-                                            combined_remarks.append({"col_name": r_col, "text": r_val})
+                                        if r_val not in [c["text"] for c in specific_remark_list]:
+                                            specific_remark_list.append({"col_name": r_col, "text": r_val})
 
                         # --- Card Rendering Section ---
                         un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
@@ -406,7 +426,6 @@ else:
                             border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
                             display_status = "🟢 Standard Acceptance"
 
-                        # Base HTML for the Card Header
                         st.markdown(f"""
                             <div class="partner-card" style="border-left-color: {border_color}; margin-bottom: 5px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -416,21 +435,26 @@ else:
                             </div>
                         """, unsafe_allow_html=True)
 
-                        # 🌟 NEW EXPANDER LOGIC: Put remarks inside a collapsible accordion expander
+                        # 🌟 精準分流顯示機制 🌟
                         if not carrier_matched_rows:
-                            with st.expander("📄 View Acceptance Details (0 Remarks)", expanded=False):
-                                st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
+                            st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                         else:
-                            remark_count = len(combined_remarks)
-                            expander_label = f"📄 View Comprehensive Carrier Remarks ({remark_count} Items)"
+                            # 1. 直接顯示（不折疊）：Has Remark 和 Specific DG Remarks
+                            direct_show_remarks = has_remark_list + specific_remark_list
+                            if direct_show_remarks:
+                                direct_html = "".join([f'<div class="remark-header" style="color:#0284c7;">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in direct_show_remarks])
+                                st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{direct_html}</div>', unsafe_allow_html=True)
                             
-                            # Keep it collapsed by default. If it's Prohibited, you could also set expanded=True if you want immediate attention
-                            with st.expander(expander_label, expanded=False):
-                                if combined_remarks:
-                                    remarks_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in combined_remarks])
-                                    st.markdown(f'<div class="remark-box">{remarks_html}</div>', unsafe_allow_html=True)
-                                else:
-                                    st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
+                            # 2. 折疊顯示（預設收起）：Sub Risk 和大範圍 Universal / Class Policy 通用條款
+                            collapsed_remarks = subrisk_policy_list + global_policy_list
+                            if collapsed_remarks:
+                                expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_remarks)} Items)"
+                                with st.expander(expander_label, expanded=False):
+                                    collapsed_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in collapsed_remarks])
+                                    st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
+                                    
+                            if not direct_show_remarks and not collapsed_remarks:
+                                st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
                                     
                     st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("<br><br>", unsafe_allow_html=True)
