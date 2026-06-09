@@ -102,7 +102,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🚢 Carrier DG Prohibited List Query System")
+st.title("🚢 Carrier DG Prohibited List Query System (testing)")
 
 # Define file paths
 excel_file = "dg_list.xlsx"
