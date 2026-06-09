@@ -477,11 +477,14 @@ else:
 # ==============================================================================
 st.markdown("""
     <div class="footer-box">
-        <div style="color: #e11d48; font-weight: bold; margin-bottom: 5px;">
+        <div style="color: #e11d48; font-weight: bold; margin-bottom: 8px;">
             ⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY
         </div>
-        <div>
+        <div style="margin-bottom: 5px;">
             Copyright © 2026 IAL DG TEAM. All Rights Reserved.
+        </div>
+        <div style="font-size: 13px; color: #94a3b8;">
+            Any issue and user feedback plz contact <a href="mailto:tim.lee@interasialine.com" style="color: #38bdf8; text-decoration: none; font-weight: bold;">tim.lee@interasialine.com</a> via Teams
         </div>
     </div>
     """, unsafe_allow_html=True)
