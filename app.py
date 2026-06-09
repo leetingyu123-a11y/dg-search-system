@@ -30,7 +30,7 @@ st.markdown("""
         padding: 4px 12px;
         border-radius: 5px;
         display: inline-block;
-        margin-bottom: 10px;
+        margin-bottom: 0px;
     }
     .remark-box {
         background-color: #ffffff;
@@ -67,6 +67,14 @@ st.markdown("""
         border-top: 1px solid #e2e8f0;
         margin-top: 50px;
     }
+    /* Style optimization for st.expander inside cards */
+    .streamlit-expanderHeader {
+        font-size: 16px !important;
+        font-weight: bold !important;
+        color: #475569 !important;
+        background-color: #f1f5f9 !important;
+        border-radius: 6px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -98,7 +106,7 @@ def is_class_matching(input_cls, target_cls):
     input_cls = clean_class_string(input_cls)
     target_cls = clean_class_string(target_cls)
     
-    if target_cls == 'ALL' or input_cls == 'ALL':
+    if target_cls == 'ALL':
         return True
         
     if input_cls.startswith('1') and target_cls.startswith('1'):
@@ -188,15 +196,15 @@ else:
             except Exception as e:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
-        # Search Query Interface Layout
+        # 🌟 SWAPPED INTERFACE: 1. UN Number Input | 2. Class Input
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown("### 1. Enter Class / Division")
-            user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
-        with col2:
-            st.markdown("### 2. Enter UN Number")
+            st.markdown("### 1. Enter UN Number")
             raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
+        with col2:
+            st.markdown("### 2. Enter Class / Division")
+            user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
         with col3:
             st.markdown("### 3. Filter by Carrier")
             partner_options = ["ALL CARRIERS"] + all_partners
@@ -356,7 +364,6 @@ else:
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        # 🌟 UNIQUE CHECK: Only add text if it is NOT a duplicate
                                         if r_val not in [c["text"] for c in combined_remarks]:
                                             if carrier_restricted_cls == 'ALL':
                                                 label = "Universal DG Policy"
@@ -367,6 +374,11 @@ else:
                         # 3. Compile Status and Extracted Row Details
                         if carrier_matched_rows:
                             for row in carrier_matched_rows:
+                                row_un = str(row['Clean_UN']).upper()
+                                row_cls = str(row['Clean_Class']).upper()
+                                if (row_un == '' or row_un == 'ALL') and row_cls != 'ALL' and row_cls != current_class:
+                                    continue
+
                                 p_text = str(row['Clean_Prohibited']).strip().upper()
                                 r_text = str(row['Clean_HasRemark']).strip().upper()
                                 
@@ -378,50 +390,49 @@ else:
                                 for r_col in remark_cols:
                                     r_val = str(row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        # 🌟 UNIQUE CHECK: Deduplicate row level remarks as well
                                         if r_val not in [c["text"] for c in combined_remarks]:
                                             combined_remarks.append({"col_name": r_col, "text": r_val})
 
                         # --- Card Rendering Section ---
                         un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
                         
-                        if not carrier_matched_rows:
-                            st.markdown(f"""
-                                <div class="partner-card" style="border-left-color: #10b981;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
-                                        <span class="status-badge" style="background-color: #d1fae5; color: #065f46;">🟢 Standard Acceptance</span>
-                                    </div>
-                                    <div style="margin-top: 10px;">
-                                        <div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
+                        if is_any_row_prohibited:
+                            border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
+                            display_status = "🔴 Strictly Prohibited"
+                        elif is_any_row_remarked:
+                            border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
+                            display_status = "🟡 Conditional Acceptance / Review Remarks"
                         else:
-                            if is_any_row_prohibited:
-                                border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
-                                display_status = "🔴 Strictly Prohibited"
-                            elif is_any_row_remarked:
-                                border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
-                                display_status = "🟡 Conditional Acceptance / Review Remarks"
-                            else:
-                                border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
-                                display_status = "🟢 Standard Acceptance (See Notice)"
+                            border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
+                            display_status = "🟢 Standard Acceptance"
 
-                            st.markdown(f"""
-                                <div class="partner-card" style="border-left-color: {border_color};">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
-                                        <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
-                                    </div>
-                                    <div style="margin-top: 10px;">
-                                        <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 Comprehensive Carrier Remarks:</div>
-                                        <div class="remark-box">
-                                            {"".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in combined_remarks]) if combined_remarks else '<div class="remark-line">Standard conditions apply.</div>'}
-                                        </div>
-                                    </div>
+                        # Base HTML for the Card Header
+                        st.markdown(f"""
+                            <div class="partner-card" style="border-left-color: {border_color}; margin-bottom: 5px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
+                                    <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
                                 </div>
-                            """, unsafe_allow_html=True)
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                        # 🌟 NEW EXPANDER LOGIC: Put remarks inside a collapsible accordion expander
+                        if not carrier_matched_rows:
+                            with st.expander("📄 View Acceptance Details (0 Remarks)", expanded=False):
+                                st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
+                        else:
+                            remark_count = len(combined_remarks)
+                            expander_label = f"📄 View Comprehensive Carrier Remarks ({remark_count} Items)"
+                            
+                            # Keep it collapsed by default. If it's Prohibited, you could also set expanded=True if you want immediate attention
+                            with st.expander(expander_label, expanded=False):
+                                if combined_remarks:
+                                    remarks_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in combined_remarks])
+                                    st.markdown(f'<div class="remark-box">{remarks_html}</div>', unsafe_allow_html=True)
+                                else:
+                                    st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
+                                    
+                    st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("<br><br>", unsafe_allow_html=True)
                             
     except Exception as e:
