@@ -85,6 +85,7 @@ def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
     val_str = str(class_val).strip()
+    # Powerful strip for .0 trailing decimals
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
     match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
@@ -93,6 +94,10 @@ def clean_class_string(class_val):
 def is_class_matching(input_cls, target_cls):
     if not input_cls or not target_cls:
         return False
+    # Clean both strings one more time to prevent 9 vs 9.0 mismatch
+    input_cls = clean_class_string(input_cls)
+    target_cls = clean_class_string(target_cls)
+    
     if input_cls.startswith('1') and target_cls.startswith('1'):
         return True
     if input_cls == target_cls:
@@ -163,7 +168,8 @@ else:
                     cls_col = [c for c in master_df.columns if any(k in c.lower() for k in ['class', 'division', '類別'])][0]
                     
                     master_df['UN Number'] = master_df[un_col].apply(format_un_number)
-                    master_df['Class'] = master_df[cls_col]
+                    # Force clean master class definitions
+                    master_df['Class'] = master_df[cls_col].apply(clean_class_string)
                     
                     sub_risk_col_name = None
                     for col in master_df.columns:
@@ -195,12 +201,11 @@ else:
             selected_partner = st.selectbox("Partner Filter", partner_options, label_visibility="collapsed")
 
         if st.button("Search Database", type="primary", use_container_width=True):
-            final_class = user_input_class
+            final_class = clean_class_string(user_input_class) if user_input_class else ""
             is_valid_input = True
             matched_master_records = []
             
-            # 💡 【Multi-Class UN Block List Setup】
-            # Future Expansion: Easily add any other multi-class UNs right into this array.
+            # Dynamic Multi-Class Block List
             MULTI_CLASS_UNS = ["1950", "2037"]
             
             if input_un in MULTI_CLASS_UNS and not final_class:
@@ -228,23 +233,23 @@ else:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in the official IMDG Code Master Database!")
                     is_valid_input = False
                 else:
-                    # 🌟 Packing Group De-duplication Mechanism
+                    # Packing Group De-duplication Mechanism
                     unique_un_exists = un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk', 'PSN'])
                     
                     for _, master_row in unique_un_exists.iterrows():
-                        db_class = str(master_row['Class']).strip()
+                        db_class = clean_class_string(master_row['Class'])
                         db_subrisk = str(master_row['Detected_SubRisk']).strip() if pd.notna(master_row['Detected_SubRisk']) else ""
                         db_psn = str(master_row['PSN']).strip() if 'PSN' in master_row else ""
                         
                         if not final_class:
                             matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
                         else:
-                            clean_user_cls = clean_class_string(final_class)
-                            if is_class_matching(clean_user_cls, clean_class_string(db_class)):
+                            if is_class_matching(final_class, db_class):
                                 matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
                     
                     if not matched_master_records and final_class:
-                        st.error(f"❌ Mismatch Warning: Official IMDG lists UN {input_un} under Class `{un_exists['Class'].tolist()}`.")
+                        clean_listed_classes = [clean_class_string(c) for c in un_exists['Class'].tolist()]
+                        st.error(f"❌ Mismatch Warning: Official IMDG lists UN {input_un} under Class `{clean_listed_classes}`.")
                         is_valid_input = False
                     elif not final_class and len(matched_master_records) > 1:
                         st.info(f"💡 Multi-Category Alert: UN {input_un} contains {len(matched_master_records)} distinct regulatory classifications.")
@@ -256,14 +261,13 @@ else:
                 st.markdown("---")
                 
                 for record in matched_master_records:
-                    current_class = record["class"]
+                    current_class = clean_class_string(record["class"])
                     raw_subrisk = record["sub_risk"]
                     current_psn = record["psn"]
                     
                     master_subrisk_list = extract_subrisks_for_matching(raw_subrisk)
                     display_subrisk_text = format_subrisk_display(raw_subrisk)
                     
-                    clean_current_class = clean_class_string(current_class)
                     subrisk_display = f" (Sub Risk: {display_subrisk_text})" if display_subrisk_text else ""
                     
                     if input_un and current_psn:
@@ -282,20 +286,29 @@ else:
                         df.columns = df.columns.astype(str).str.strip()
                         
                         col_mapping = {}
+                        # 🌟 HIGHLY ROBUST COLUMN MAPPING LOGIC (Solves the formatting error bugs)
                         for c in df.columns:
-                            c_lower = c.lower()
-                            if any(k in c_lower for k in ['un號碼', 'un number', 'un_number']): col_mapping['UN'] = c
-                            if any(k in c_lower for k in ['class/division', 'class', 'division', '類別']): col_mapping['Class'] = c
-                            if any(k in c_lower for k in ['狀態', 'prohibited']): col_mapping['Prohibited'] = c
-                            if any(k in c_lower for k in ['has remark', 'hasremark', '備註狀態']): col_mapping['HasRemark'] = c
-                            if any(k in c_lower for k in ['次要風險', 'sub risk', 'subsidiary risk', 'subrisk']): col_mapping['SubRisk'] = c
+                            c_lower = c.lower().replace(" ", "").replace("/", "").replace("_", "")
+                            if 'un' in c_lower: col_mapping['UN'] = c
+                            if 'class' in c_lower or 'division' in c_lower or '類別' in c_lower: col_mapping['Class'] = c
+                            if 'prohibit' in c_lower or '狀態' in c_lower or 'status' in c_lower: col_mapping['Prohibited'] = c
+                            if 'remark' in c_lower and ('has' in c_lower or '狀態' in c_lower): col_mapping['HasRemark'] = c
+                            if 'subrisk' in c_lower or '次要' in c_lower or 'subsidiary' in c_lower: col_mapping['SubRisk'] = c
                         
+                        # Emergency fallbacks
+                        if 'UN' not in col_mapping:
+                            for c in df.columns:
+                                if 'un' in c.lower(): col_mapping['UN'] = c
+                        if 'Class' not in col_mapping:
+                            for c in df.columns:
+                                if 'class' in c.lower() or 'division' in c.lower(): col_mapping['Class'] = c
                         if 'Prohibited' not in col_mapping:
                             for c in df.columns:
-                                if 'status' in c.lower(): col_mapping['Prohibited'] = c
+                                if 'prohibit' in c.lower() or 'status' in c.lower() or '狀態' in c.lower(): col_mapping['Prohibited'] = c
                         
-                        if 'UN' not in col_mapping or 'Class' not in col_mapping:
-                            st.error(f"⚠️ Sheet `{sheet_name}` format error. Missing columns. Found: {list(df.columns)}")
+                        # Ultimate verification guardrail
+                        if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Prohibited' not in col_mapping:
+                            st.error(f"⚠️ Sheet `{sheet_name}` structure error. Column resolution failed. Found headings: {list(df.columns)}")
                             continue
                         
                         remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
@@ -305,7 +318,7 @@ else:
                         
                         df['Clean_Prohibited'] = df[col_mapping['Prohibited']].fillna('').astype(str).str.strip().str.upper() if 'Prohibited' in col_mapping else ""
                         df['Clean_HasRemark'] = df[col_mapping['HasRemark']].fillna('').astype(str).str.strip().str.upper() if 'HasRemark' in col_mapping else ""
-                        df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip() if 'SubRisk' in col_mapping else ""
+                        df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip().apply(clean_class_string) if 'SubRisk' in col_mapping else ""
 
                         matched_rows = []
                         global_class_remarks = []
@@ -313,16 +326,15 @@ else:
                         global_prohibited_row = None
 
                         # 1. Global Class Rules Scanning
-                        if clean_current_class:
+                        if current_class:
                             global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
                             
                             for _, g_row in global_lines.iterrows():
                                 carrier_restricted_cls = g_row['Clean_Class']
-                                
                                 raw_p_val = g_row['Clean_Prohibited']
                                 is_prohibited_status = any(k in raw_p_val for k in ["🔴", "禁收", "YES", "PROHIBITED"]) and (raw_p_val != 'NAN' and raw_p_val != '')
                                 
-                                main_class_hit = is_class_matching(clean_current_class, carrier_restricted_cls)
+                                main_class_hit = is_class_matching(current_class, carrier_restricted_cls)
                                 
                                 sub_risk_hit = False
                                 if master_subrisk_list and carrier_restricted_cls:
@@ -355,9 +367,9 @@ else:
                                 exact_matched_rows = []
                                 for _, row in exact_match.iterrows():
                                     carrier_cls = row['Clean_Class']
-                                    carrier_subrisk = clean_class_string(row['Clean_SubRisk'])
+                                    carrier_subrisk = row['Clean_SubRisk']
                                     
-                                    if carrier_cls and not is_class_matching(clean_current_class, carrier_cls):
+                                    if carrier_cls and not is_class_matching(current_class, carrier_cls):
                                         continue
                                     if carrier_subrisk and master_subrisk_list:
                                         if carrier_subrisk not in master_subrisk_list:
@@ -389,7 +401,7 @@ else:
                                 p_text = str(row['Clean_Prohibited']).strip().upper()
                                 r_text = str(row['Clean_HasRemark']).strip().upper()
                                 
-                                carrier_record_cls = row[col_mapping['Class']] if pd.notna(row[col_mapping['Class']]) else ""
+                                carrier_record_cls = clean_class_string(row[col_mapping['Class']]) if pd.notna(row[col_mapping['Class']]) else ""
                                 un_display = row['Clean_UN'] if row['Clean_UN'] != '' else f"Class {current_class} Universal Policy"
                                 if carrier_record_cls and row['Clean_UN'] != '':
                                     un_display = f"UN {row['Clean_UN']} (Class {carrier_record_cls})"
