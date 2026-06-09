@@ -74,13 +74,31 @@ st.markdown("""
         border-top: 1px solid #e2e8f0;
         margin-top: 50px;
     }
+    
+    /* ------------------------------------------------------------- */
+    /* 🎯 摺疊按鈕視覺優化區 (控制大、小、醒目度)                      */
+    /* ------------------------------------------------------------- */
+    
+    /* 預設所有摺疊按鈕的基本樣式 */
     .streamlit-expanderHeader {
-        font-size: 16px !important;
-        font-weight: bold !important;
-        color: #475569 !important;
         background-color: #f1f5f9 !important;
         border-radius: 6px !important;
     }
+
+    /* 🌟 重點：讓「第一個摺疊按鈕 (Specific DG)」比下面那個大一些、醒目一些 */
+    .stExpander:nth-of-type(1) .streamlit-expanderHeader p {
+        font-size: 19px !important;       /* 微調放大，預設是 16px */
+        font-weight: 800 !important;       /* 加粗字體 */
+        color: #0f172a !important;         /* 使用較深的鋼鐵黑/深藍，顯眼而不刺眼 */
+    }
+
+    /* ⚪ 次要：讓「第二個摺疊按鈕 (Global Policy)」維持標準大小與低調灰色 */
+    .stExpander:nth-of-type(2) .streamlit-expanderHeader p {
+        font-size: 15px !important;       /* 稍微縮小一點點 */
+        font-weight: 600 !important;       /* 標準粗細 */
+        color: #64748b !important;         /* 使用文青灰，降低視覺干擾 */
+    }
+    /* ------------------------------------------------------------- */
     </style>
     """, unsafe_allow_html=True)
 
@@ -335,9 +353,8 @@ else:
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
 
-                        # 🌟 建立兩個獨立折疊水桶
-                        specific_dg_list = []  # 針對此特定 UN 的摺疊（包含 Has Remark 與 特定 Remark）
-                        collapsed_list = []    # 針對 Excel 裡為 ALL 或空白的全域通則摺疊
+                        specific_dg_list = []  # 📂 摺疊 1 水桶 (精準特定項目備註)
+                        collapsed_list = []    # 📄 摺疊 2 水桶 (通用大範圍通則)
 
                         # 1. Check Exact UN Matches First
                         if input_un:
@@ -353,13 +370,11 @@ else:
                                         continue
                                 carrier_matched_rows.append(row)
                                 
-                                # ⚡ Has Remark 狀態提示放入第一個摺疊清單
                                 if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
                                     hr_val = str(row[col_mapping['HasRemark']]).strip()
                                     if hr_val and hr_val.lower() != 'nan' and hr_val not in [c["text"] for c in specific_dg_list]:
                                         specific_dg_list.append({"col_name": "Has Remark", "text": hr_val})
                                 
-                                # 📝 專屬項目的特定 Remark 也放入第一個摺疊清單
                                 for r_col in remark_cols:
                                     if 'HasRemark' in col_mapping and r_col == col_mapping['HasRemark']:
                                         continue
@@ -368,7 +383,7 @@ else:
                                         if r_val not in [c["text"] for c in specific_dg_list]:
                                             specific_dg_list.append({"col_name": r_col, "text": r_val})
 
-                        # 2. Check Global Policy Rules (Main Class vs Sub Risk Policy)
+                        # 2. Check Global Policy Rules
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
                         for _, g_row in global_lines.iterrows():
                             carrier_restricted_cls = g_row['Clean_Class']
@@ -387,7 +402,6 @@ else:
                             if main_class_hit or sub_risk_hit:
                                 carrier_matched_rows.append(g_row)
                                 
-                                # ⚪ 通用通則放入第二個摺疊清單
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
@@ -399,7 +413,7 @@ else:
                                         if r_val not in [c["text"] for c in collapsed_list]:
                                             collapsed_list.append({"col_name": label, "text": r_val})
 
-                        # 3. 統計這家船東的整體紅綠燈狀態
+                        # 3. 統計狀態
                         if carrier_matched_rows:
                             for row in carrier_matched_rows:
                                 p_text = str(row['Clean_Prohibited']).strip().upper()
@@ -431,18 +445,18 @@ else:
                             </div>
                         """, unsafe_allow_html=True)
 
-                        # 🌟 雙摺疊獨立呈現邏輯 🌟
+                        # 雙摺疊渲染
                         if not carrier_matched_rows:
                             st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                         else:
-                            # 📁 摺疊 1：專屬特定 DG 項目備註（Has Remark + Specific Remarks）
+                            # 📁 摺疊 1：專屬特定 DG 項目備註 (套用 nth-of-type(1) 放大加粗 CSS)
                             if specific_dg_list:
-                                specific_label = f"📄 View Specific DG Remarks ({len(specific_dg_list)} Items)"
+                                specific_label = f"📋 View Specific DG Remarks ({len(specific_dg_list)} Items)"
                                 with st.expander(specific_label, expanded=False):
                                     specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in specific_dg_list])
                                     st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
                             
-                            # 📁 摺疊 2：Excel 為 ALL/空白的通用通則（Global / Universal Policies）
+                            # 📁 摺疊 2：通用通則 (套用 nth-of-type(2) 標準灰色小字 CSS)
                             if collapsed_list:
                                 expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
                                 with st.expander(expander_label, expanded=False):
