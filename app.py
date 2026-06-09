@@ -18,8 +18,6 @@ if not os.path.exists(master_file):
 # -------------------------------------------------------------
 # ⚡ STREAMLIT CACHE DATA FUNCTIONS (雲端環境優化版快取)
 # -------------------------------------------------------------
-# 我們把檔案的「最後修改時間」當作參數傳進去。
-# 只要你上傳新檔案，修改時間變了，Streamlit 就會自動當作新資料重新讀取！
 @st.cache_data
 def load_carrier_excel(file_path, file_timestamp):
     """讀取並載入船東 DG 限制清單 (dg_list.xlsx)"""
@@ -36,11 +34,9 @@ def load_imdg_master(file_path, file_timestamp):
         return df
     return None
 
-# 取得檔案最後修改時間，如果檔案不存在就給 0
 excel_time = os.path.getmtime(excel_file) if os.path.exists(excel_file) else 0
 master_time = os.path.getmtime(master_file) if os.path.exists(master_file) else 0
 
-# 🚀 載入資料（將時間戳記帶入，達成完美的自動更新防錯機制）
 excel_sheets = load_carrier_excel(excel_file, excel_time)
 raw_master_df = load_imdg_master(master_file, master_time)
 # -------------------------------------------------------------
@@ -114,28 +110,22 @@ st.markdown("""
         margin-top: 50px;
     }
     
-    /* ------------------------------------------------------------- */
-    /* 🎯 摺疊按鈕視覺優化區 (控制大、小、醒目度)                      */
-    /* ------------------------------------------------------------- */
     .streamlit-expanderHeader {
         background-color: #f1f5f9 !important;
         border-radius: 6px !important;
     }
 
-    /* 🌟 重點：第一個摺疊按鈕 (Specific DG) 放大加粗 */
     .stExpander:nth-of-type(1) .streamlit-expanderHeader p {
         font-size: 19px !important;       
         font-weight: 800 !important;       
         color: #0f172a !important;         
     }
 
-    /* ⚪ 次要：第二個摺疊按鈕 (Global Policy) 維持標準低調灰色 */
     .stExpander:nth-of-type(2) .streamlit-expanderHeader p {
         font-size: 15px !important;       
         font-weight: 600 !important;       
         color: #64748b !important;         
     }
-    /* ------------------------------------------------------------- */
     </style>
     """, unsafe_allow_html=True)
 
@@ -160,7 +150,6 @@ def is_class_matching(input_cls, target_cls):
     
     if target_cls == 'ALL':
         return True
-        
     if input_cls.startswith('1') and target_cls.startswith('1'):
         return True
     if input_cls == target_cls:
@@ -353,16 +342,6 @@ else:
                             if 'remark' in c_lower and ('has' in c_lower or '狀態' in c_lower): col_mapping['HasRemark'] = c
                             if 'subrisk' in c_lower or '次要' in c_lower or 'subsidiary' in c_lower: col_mapping['SubRisk'] = c
                         
-                        if 'UN' not in col_mapping:
-                            for c in df.columns:  
-                                if 'un' in c.lower(): col_mapping['UN'] = c
-                        if 'Class' not in col_mapping:
-                            for c in df.columns:  
-                                if 'class' in c.lower() or 'division' in c.lower(): col_mapping['Class'] = c
-                        if 'Prohibited' not in col_mapping:
-                            for c in df.columns:  
-                                if 'prohibit' in c.lower() or 'status' in c.lower() or '狀態' in c.lower(): col_mapping['Prohibited'] = c
-                        
                         if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Prohibited' not in col_mapping:
                             st.error(f"⚠️ Sheet `{sheet_name}` structure error. Column resolution failed.")
                             continue
@@ -409,7 +388,7 @@ else:
                                         if r_val not in [c["text"] for c in specific_dg_list]:
                                             specific_dg_list.append({"col_name": r_col, "text": r_val})
 
-                        # 2. Check Global Policy Rules
+                        # 2. Check Global Policy Rules (🎯 重新分配分流邏輯)
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
                         for _, g_row in global_lines.iterrows():
                             carrier_restricted_cls = g_row['Clean_Class']
@@ -431,13 +410,16 @@ else:
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
+                                        # 🌟 重點優化處：
+                                        # 如果 Class 寫 ALL，代表它是真正的全域通則，留在【第二摺疊】
                                         if carrier_restricted_cls == 'ALL':
-                                            label = "Universal DG Policy"
+                                            if r_val not in [c["text"] for c in collapsed_list]:
+                                                collapsed_list.append({"col_name": "Universal DG Policy", "text": r_val})
+                                        # 如果有寫特定 Class（例如 4），直接拔擢到【第一摺疊：Specific DG Remarks】
                                         else:
-                                            label = "Main Class Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
-                                            
-                                        if r_val not in [c["text"] for c in collapsed_list]:
-                                            collapsed_list.append({"col_name": label, "text": r_val})
+                                            label = f"Main Class {carrier_restricted_cls} Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
+                                            if r_val not in [c["text"] for c in specific_dg_list]:
+                                                specific_dg_list.append({"col_name": label, "text": r_val})
 
                         # 3. 統計狀態
                         if carrier_matched_rows:
@@ -471,18 +453,17 @@ else:
                             </div>
                         """, unsafe_allow_html=True)
 
-                        # 雙摺疊渲染
                         if not carrier_matched_rows:
                             st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                         else:
-                            # 📂 摺疊 1：專屬特定 DG 項目備註
+                            # 📂 摺疊 1：專屬特定 DG 項目 / 針對大類類別的政策
                             if specific_dg_list:
                                 specific_label = f"📋 View Specific DG Remarks ({len(specific_dg_list)} Items)"
                                 with st.expander(specific_label, expanded=False):
                                     specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in specific_dg_list])
                                     st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
                             
-                            # 📂 摺疊 2：通用通則
+                            # 📂 摺疊 2：通用通則 (只有 UN=ALL 且 Class=ALL 的才會留在這)
                             if collapsed_list:
                                 expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
                                 with st.expander(expander_label, expanded=False):
