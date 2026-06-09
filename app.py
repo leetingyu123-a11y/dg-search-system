@@ -275,7 +275,7 @@ else:
                     
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
-                    # 🌟 Consolidated Carrier Loop (Guarantees One Card Per Carrier)
+                    # Consolidated Carrier Loop (Guarantees One Card Per Carrier)
                     for sheet_name in search_targets:
                         df = excel_sheets[sheet_name]
                         df.columns = df.columns.astype(str).str.strip()
@@ -290,11 +290,14 @@ else:
                             if 'subrisk' in c_lower or '次要' in c_lower or 'subsidiary' in c_lower: col_mapping['SubRisk'] = c
                         
                         if 'UN' not in col_mapping:
-                            for c in df.columns:  if 'un' in c.lower(): col_mapping['UN'] = c
+                            for c in df.columns:  
+                                if 'un' in c.lower(): col_mapping['UN'] = c
                         if 'Class' not in col_mapping:
-                            for c in df.columns:  if 'class' in c.lower() or 'division' in c.lower(): col_mapping['Class'] = c
+                            for c in df.columns:  
+                                if 'class' in c.lower() or 'division' in c.lower(): col_mapping['Class'] = c
                         if 'Prohibited' not in col_mapping:
-                            for c in df.columns:  if 'prohibit' in c.lower() or 'status' in c.lower() or '狀態' in c.lower(): col_mapping['Prohibited'] = c
+                            for c in df.columns:  
+                                if 'prohibit' in c.lower() or 'status' in c.lower() or '狀態' in c.lower(): col_mapping['Prohibited'] = c
                         
                         if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Prohibited' not in col_mapping:
                             st.error(f"⚠️ Sheet `{sheet_name}` structure error. Column resolution failed.")
@@ -371,7 +374,6 @@ else:
                                 for r_col in remark_cols:
                                     r_val = str(row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        # Deduplicate identical messages
                                         if r_val not in [c["text"] for c in combined_remarks]:
                                             combined_remarks.append({"col_name": r_col, "text": r_val})
 
