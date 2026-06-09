@@ -154,7 +154,7 @@ def format_un_number(un_val):
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
     if val_str.upper() == 'ALL' or val_str == '':
-        return val_str
+        return 'ALL' # 確保空值或 ALL 統一識別為 'ALL'
     if val_str.isdigit():
         return val_str.zfill(4)
     digit_match = re.search(r'\d+', val_str)
@@ -196,7 +196,7 @@ else:
             except Exception as e:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
-        # Interface Layout: Class on Left | UN Number on Right
+        # Interface Layout: Class Input | UN Number Input
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("### 1. Enter Class / Division")
@@ -204,7 +204,10 @@ else:
         with col2:
             st.markdown("### 2. Enter UN Number")
             raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", label_visibility="collapsed").strip()
+            # 注意：這裡如果是使用者手動輸入，空值不應變成長度為4的 'ALL'
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
+            if input_un == 'ALL': 
+                input_un = ""
         with col3:
             st.markdown("### 3. Filter by Carrier")
             partner_options = ["ALL CARRIERS"] + all_partners
@@ -317,7 +320,7 @@ else:
                         
                         remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
                         
-                        df['Clean_UN'] = df[col_mapping['UN']].fillna('').apply(format_un_number)
+                        df['Clean_UN'] = df[col_mapping['UN']].fillna('ALL').apply(format_un_number)
                         df['Clean_Class'] = df[col_mapping['Class']].apply(clean_class_string)
                         df['Clean_Prohibited'] = df[col_mapping['Prohibited']].fillna('').astype(str).str.strip().str.upper()
                         df['Clean_HasRemark'] = df[col_mapping['HasRemark']].fillna('').astype(str).str.strip().str.upper() if 'HasRemark' in col_mapping else ""
@@ -327,11 +330,9 @@ else:
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
 
-                        # 分流水桶
-                        has_remark_list = []      # 直接攤開
-                        specific_remark_list = []  # 直接攤開
-                        subrisk_policy_list = []   # 要折疊
-                        global_policy_list = []    # 要折疊
+                        # 🌟 改用「要直接攤開」與「要折疊」兩大分流水桶
+                        direct_show_list = []  # 精準指定特定 UN 的條款：直接攤開顯示
+                        collapsed_list = []    # 欄位為 ALL / 空白的條款：收進折疊區
 
                         # 1. Check Exact UN Matches First
                         if input_un:
@@ -346,6 +347,20 @@ else:
                                     if carrier_subrisk not in master_subrisk_list:
                                         continue
                                 carrier_matched_rows.append(row)
+                                
+                                # 🟢 這是精準比對到的特定項目 -> 放入直接顯示水桶
+                                if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
+                                    hr_val = str(row[col_mapping['HasRemark']]).strip()
+                                    if hr_val and hr_val.lower() != 'nan' and hr_val not in [c["text"] for c in direct_show_list]:
+                                        direct_show_list.append({"col_name": "Has Remark", "text": hr_val})
+                                
+                                for r_col in remark_cols:
+                                    if 'HasRemark' in col_mapping and r_col == col_mapping['HasRemark']:
+                                        continue
+                                    r_val = str(row[r_col]).strip()
+                                    if r_val and r_val.lower() != 'nan' and r_val != '':
+                                        if r_val not in [c["text"] for c in direct_show_list]:
+                                            direct_show_list.append({"col_name": r_col, "text": r_val})
 
                         # 2. Check Global Policy Rules (Main Class vs Sub Risk Policy)
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
@@ -366,52 +381,27 @@ else:
                             if main_class_hit or sub_risk_hit:
                                 carrier_matched_rows.append(g_row)
                                 
+                                # 🟡 這是從 Excel 的 ALL / 空白抓出來的通則 -> 放入折疊水桶
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
                                         if carrier_restricted_cls == 'ALL':
                                             label = "Universal DG Policy"
-                                            if r_val not in [c["text"] for c in global_policy_list]:
-                                                global_policy_list.append({"col_name": label, "text": r_val})
                                         else:
-                                            if main_class_hit:
-                                                label = "Main Class Policy"
-                                                if r_val not in [c["text"] for c in global_policy_list]:
-                                                    global_policy_list.append({"col_name": label, "text": r_val})
-                                            else:
-                                                label = f"Sub Risk '{hit_subrisk_val}' Restriction"
-                                                if r_val not in [c["text"] for c in subrisk_policy_list]:
-                                                    subrisk_policy_list.append({"col_name": label, "text": r_val})
+                                            label = "Main Class Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
+                                            
+                                        if r_val not in [c["text"] for c in collapsed_list]:
+                                            collapsed_list.append({"col_name": label, "text": r_val})
 
-                        # 3. Compile Status and Extracted Row Details
+                        # 3. 統計這家船東的整體紅綠燈狀態
                         if carrier_matched_rows:
                             for row in carrier_matched_rows:
-                                row_un = str(row['Clean_UN']).upper()
-                                row_cls = str(row['Clean_Class']).upper()
-                                if (row_un == '' or row_un == 'ALL') and row_cls != 'ALL' and row_cls != current_class:
-                                    continue
-
                                 p_text = str(row['Clean_Prohibited']).strip().upper()
                                 r_text = str(row['Clean_HasRemark']).strip().upper()
-                                
                                 if any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
                                     is_any_row_prohibited = True
                                 if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
                                     is_any_row_remarked = True
-                                    
-                                # 狀態提示（Has Remark）
-                                if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
-                                    hr_val = str(row[col_mapping['HasRemark']]).strip()
-                                    if hr_val and hr_val.lower() != 'nan' and hr_val not in [c["text"] for c in has_remark_list]:
-                                        has_remark_list.append({"col_name": "Has Remark", "text": hr_val})
-
-                                for r_col in remark_cols:
-                                    if 'HasRemark' in col_mapping and r_col == col_mapping['HasRemark']:
-                                        continue
-                                    r_val = str(row[r_col]).strip()
-                                    if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        if r_val not in [c["text"] for c in specific_remark_list]:
-                                            specific_remark_list.append({"col_name": r_col, "text": r_val})
 
                         # --- Card Rendering Section ---
                         un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
@@ -435,25 +425,23 @@ else:
                             </div>
                         """, unsafe_allow_html=True)
 
-                        # 🌟 精準分流顯示機制 🌟
+                        # 🌟 精準分流呈現
                         if not carrier_matched_rows:
                             st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                         else:
-                            # 1. 直接顯示（不折疊）：Has Remark 和 Specific DG Remarks
-                            direct_show_remarks = has_remark_list + specific_remark_list
-                            if direct_show_remarks:
-                                direct_html = "".join([f'<div class="remark-header" style="color:#0284c7;">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in direct_show_remarks])
+                            # 1. 專屬特定 UN 備註：【直接攤開】
+                            if direct_show_list:
+                                direct_html = "".join([f'<div class="remark-header" style="color:#0284c7;">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in direct_show_list])
                                 st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{direct_html}</div>', unsafe_allow_html=True)
                             
-                            # 2. 折疊顯示（預設收起）：Sub Risk 和大範圍 Universal / Class Policy 通用條款
-                            collapsed_remarks = subrisk_policy_list + global_policy_list
-                            if collapsed_remarks:
-                                expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_remarks)} Items)"
+                            # 2. Excel 為 ALL/空白的通則：【自動折疊】
+                            if collapsed_list:
+                                expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
                                 with st.expander(expander_label, expanded=False):
-                                    collapsed_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in collapsed_remarks])
+                                    collapsed_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in collapsed_list])
                                     st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
                                     
-                            if not direct_show_remarks and not collapsed_remarks:
+                            if not direct_show_list and not collapsed_list:
                                 st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
                                     
                     st.markdown("<br>", unsafe_allow_html=True)
