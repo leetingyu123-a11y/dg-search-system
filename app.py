@@ -6,6 +6,36 @@ import re
 # Set page title and wide layout
 st.set_page_config(page_title="Carrier DG Prohibited List Query System", layout="wide")
 
+# Define file paths (移到最上方，方便快取功能讀取)
+excel_file = "dg_list.xlsx"
+if not os.path.exists(excel_file):
+    excel_file = os.path.join("DG_System", "dg_list.xlsx")
+
+master_file = "imdg_master.xlsx"
+if not os.path.exists(master_file):
+    master_file = os.path.join("DG_System", "imdg_master.xlsx")
+
+# -------------------------------------------------------------
+# ⚡ STREAMLIT CACHE DATA FUNCTIONS (快取加速核心區)
+# -------------------------------------------------------------
+# watch=[excel_file] 代表只要這個檔案被修改儲存，快取就會自動更新！
+@st.cache_data(watch=[excel_file])
+def load_carrier_excel(file_path):
+    """讀取並載入船東 DG 限制清單 (dg_list.xlsx)"""
+    if os.path.exists(file_path):
+        return pd.read_excel(file_path, sheet_name=None)
+    return None
+
+@st.cache_data(watch=[master_file])
+def load_imdg_master(file_path):
+    """讀取並載入官方 IMDG Master 數據庫 (imdg_master.xlsx)"""
+    if os.path.exists(file_path):
+        df = pd.read_excel(file_path, dtype=str)
+        df.columns = df.columns.astype(str).str.strip()
+        return df
+    return None
+# -------------------------------------------------------------
+
 st.markdown("""
     <style>
     .psn-card {
@@ -78,40 +108,29 @@ st.markdown("""
     /* ------------------------------------------------------------- */
     /* 🎯 摺疊按鈕視覺優化區 (控制大、小、醒目度)                      */
     /* ------------------------------------------------------------- */
-    
-    /* 預設所有摺疊按鈕的基本樣式 */
     .streamlit-expanderHeader {
         background-color: #f1f5f9 !important;
         border-radius: 6px !important;
     }
 
-    /* 🌟 重點：讓「第一個摺疊按鈕 (Specific DG)」比下面那個大一些、醒目一些 */
+    /* 🌟 重點：第一個摺疊按鈕 (Specific DG) 放大加粗 */
     .stExpander:nth-of-type(1) .streamlit-expanderHeader p {
-        font-size: 19px !important;       /* 微調放大，預設是 16px */
-        font-weight: 800 !important;       /* 加粗字體 */
-        color: #0f172a !important;         /* 使用較深的鋼鐵黑/深藍，顯眼而不刺眼 */
+        font-size: 19px !important;       
+        font-weight: 800 !important;       
+        color: #0f172a !important;         
     }
 
-    /* ⚪ 次要：讓「第二個摺疊按鈕 (Global Policy)」維持標準大小與低調灰色 */
+    /* ⚪ 次要：第二個摺疊按鈕 (Global Policy) 維持標準低調灰色 */
     .stExpander:nth-of-type(2) .streamlit-expanderHeader p {
-        font-size: 15px !important;       /* 稍微縮小一點點 */
-        font-weight: 600 !important;       /* 標準粗細 */
-        color: #64748b !important;         /* 使用文青灰，降低視覺干擾 */
+        font-size: 15px !important;       
+        font-weight: 600 !important;       
+        color: #64748b !important;         
     }
     /* ------------------------------------------------------------- */
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🚢 Carrier DG Prohibited List Query System (testing)")
-
-# Define file paths
-excel_file = "dg_list.xlsx"
-if not os.path.exists(excel_file):
-    excel_file = os.path.join("DG_System", "dg_list.xlsx")
-
-master_file = "imdg_master.xlsx"
-if not os.path.exists(master_file):
-    master_file = os.path.join("DG_System", "imdg_master.xlsx")
+st.title("🚢 Carrier DG Prohibited List Query System")
 
 def clean_class_string(class_val):
     if pd.isna(class_val):
@@ -186,18 +205,21 @@ def format_un_number(un_val):
         return digit_match.group(0).zfill(4)
     return val_str
 
-if not os.path.exists(excel_file):
+# 🚀 使用「快取函式」載入 Excel 資料 (如果之前讀過，這邊會一瞬間完成)
+excel_sheets = load_carrier_excel(excel_file)
+raw_master_df = load_imdg_master(master_file)
+
+if excel_sheets is None:
     st.error("❌ CRITICAL ERROR: dg_list.xlsx not found!")
 else:
     try:
-        excel_sheets = pd.read_excel(excel_file, sheet_name=None)
         all_partners = [sheet for sheet in excel_sheets.keys() if not (sheet.startswith("Sheet") and excel_sheets[sheet].empty)]
         
         has_master = False
-        if os.path.exists(master_file):
+        if raw_master_df is not None:
             try:
-                master_df = pd.read_excel(master_file, dtype=str)
-                master_df.columns = master_df.columns.astype(str).str.strip()
+                # 複製一份出來處理，避免污染快取原始資料
+                master_df = raw_master_df.copy()
                 if 'UN Number' in master_df.columns or 'UN' in master_df.columns:
                     un_col = [c for c in master_df.columns if c.lower() in ['un number', 'un', 'un號碼']][0]
                     cls_col = [c for c in master_df.columns if any(k in c.lower() for k in ['class', 'division', '類別'])][0]
@@ -315,7 +337,7 @@ else:
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
                     for sheet_name in search_targets:
-                        df = excel_sheets[sheet_name]
+                        df = excel_sheets[sheet_name].copy() # copy 一份避免影響快取資料
                         df.columns = df.columns.astype(str).str.strip()
                         
                         col_mapping = {}
@@ -353,8 +375,8 @@ else:
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
 
-                        specific_dg_list = []  # 📂 摺疊 1 水桶 (精準特定項目備註)
-                        collapsed_list = []    # 📄 摺疊 2 水桶 (通用大範圍通則)
+                        specific_dg_list = []  
+                        collapsed_list = []    
 
                         # 1. Check Exact UN Matches First
                         if input_un:
@@ -449,14 +471,14 @@ else:
                         if not carrier_matched_rows:
                             st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                         else:
-                            # 📁 摺疊 1：專屬特定 DG 項目備註 (套用 nth-of-type(1) 放大加粗 CSS)
+                            # 📂 摺疊 1：專屬特定 DG 項目備註
                             if specific_dg_list:
                                 specific_label = f"📋 View Specific DG Remarks ({len(specific_dg_list)} Items)"
                                 with st.expander(specific_label, expanded=False):
                                     specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in specific_dg_list])
                                     st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
                             
-                            # 📁 摺疊 2：通用通則 (套用 nth-of-type(2) 標準灰色小字 CSS)
+                            # 📂 摺疊 2：通用通則
                             if collapsed_list:
                                 expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
                                 with st.expander(expander_label, expanded=False):
