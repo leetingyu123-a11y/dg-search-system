@@ -85,6 +85,8 @@ def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
     val_str = str(class_val).strip()
+    if val_str.upper() == 'ALL':
+        return 'ALL'
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
     match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
@@ -96,6 +98,10 @@ def is_class_matching(input_cls, target_cls):
     input_cls = clean_class_string(input_cls)
     target_cls = clean_class_string(target_cls)
     
+    # 🌟 NEW: If the carrier table defines Class as "ALL", it covers everything!
+    if target_cls == 'ALL' or input_cls == 'ALL':
+        return True
+        
     if input_cls.startswith('1') and target_cls.startswith('1'):
         return True
     if input_cls == target_cls:
@@ -212,7 +218,7 @@ else:
                 st.warning("⚠️ Action Required: Please enter at least a UN Number or a Class/Division to perform search.")
                 is_valid_input = False
                 
-            if is_valid_input and final_class:
+            if is_valid_input and final_class and final_class != 'ALL':
                 cleaned_num_str = clean_class_string(final_class)
                 try:
                     class_num = float(cleaned_num_str)
@@ -236,13 +242,13 @@ else:
                         db_subrisk = str(master_row['Detected_SubRisk']).strip() if pd.notna(master_row['Detected_SubRisk']) else ""
                         db_psn = str(master_row['PSN']).strip() if 'PSN' in master_row else ""
                         
-                        if not final_class:
+                        if not final_class or final_class == 'ALL':
                             matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
                         else:
                             if is_class_matching(final_class, db_class):
                                 matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
                     
-                    if not matched_master_records and final_class:
+                    if not matched_master_records and final_class and final_class != 'ALL':
                         clean_listed_classes = [clean_class_string(c) for c in un_exists['Class'].tolist()]
                         st.error(f"❌ Mismatch Warning: Official IMDG lists UN {input_un} under Class `{clean_listed_classes}`.")
                         is_valid_input = False
@@ -275,7 +281,6 @@ else:
                     
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
-                    # Consolidated Carrier Loop (Guarantees One Card Per Carrier)
                     for sheet_name in search_targets:
                         df = excel_sheets[sheet_name]
                         df.columns = df.columns.astype(str).str.strip()
@@ -311,7 +316,6 @@ else:
                         df['Clean_HasRemark'] = df[col_mapping['HasRemark']].fillna('').astype(str).str.strip().str.upper() if 'HasRemark' in col_mapping else ""
                         df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip().apply(clean_class_string) if 'SubRisk' in col_mapping else ""
 
-                        # Evaluation Bucket for This Carrier Card
                         carrier_matched_rows = []
                         combined_remarks = []
                         is_any_row_prohibited = False
@@ -336,10 +340,8 @@ else:
                         for _, g_row in global_lines.iterrows():
                             carrier_restricted_cls = g_row['Clean_Class']
                             
-                            # Main Class evaluation
                             main_class_hit = is_class_matching(current_class, carrier_restricted_cls)
                             
-                            # Sub Risk evaluation
                             sub_risk_hit = False
                             hit_subrisk_val = ""
                             if master_subrisk_list and carrier_restricted_cls:
@@ -352,11 +354,13 @@ else:
                             if main_class_hit or sub_risk_hit:
                                 carrier_matched_rows.append(g_row)
                                 
-                                # Gather global remarks
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        label = "Main Class Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
+                                        if carrier_restricted_cls == 'ALL':
+                                            label = "Universal DG Policy"
+                                        else:
+                                            label = "Main Class Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
                                         combined_remarks.append({"col_name": label, "text": r_val})
 
                         # 3. Compile Status and Extracted Row Details
@@ -370,7 +374,6 @@ else:
                                 if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
                                     is_any_row_remarked = True
                                     
-                                # Gather standard row remarks
                                 for r_col in remark_cols:
                                     r_val = str(row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
@@ -381,7 +384,6 @@ else:
                         un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
                         
                         if not carrier_matched_rows:
-                            # 🟢 Standard Acceptance Card
                             st.markdown(f"""
                                 <div class="partner-card" style="border-left-color: #10b981;">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -394,7 +396,6 @@ else:
                                 </div>
                             """, unsafe_allow_html=True)
                         else:
-                            # 💡 3-Tier Status Priority Flow Control
                             if is_any_row_prohibited:
                                 border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
                                 display_status = "🔴 Strictly Prohibited"
