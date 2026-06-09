@@ -6,7 +6,7 @@ import re
 # Set page title and wide layout
 st.set_page_config(page_title="Carrier DG Prohibited List Query System", layout="wide")
 
-# Define file paths (移到最上方，方便快取功能讀取)
+# Define file paths
 excel_file = "dg_list.xlsx"
 if not os.path.exists(excel_file):
     excel_file = os.path.join("DG_System", "dg_list.xlsx")
@@ -16,24 +16,33 @@ if not os.path.exists(master_file):
     master_file = os.path.join("DG_System", "imdg_master.xlsx")
 
 # -------------------------------------------------------------
-# ⚡ STREAMLIT CACHE DATA FUNCTIONS (快取加速核心區)
+# ⚡ STREAMLIT CACHE DATA FUNCTIONS (雲端環境優化版快取)
 # -------------------------------------------------------------
-# watch=[excel_file] 代表只要這個檔案被修改儲存，快取就會自動更新！
-@st.cache_data(watch=[excel_file])
-def load_carrier_excel(file_path):
+# 我們把檔案的「最後修改時間」當作參數傳進去。
+# 只要你上傳新檔案，修改時間變了，Streamlit 就會自動當作新資料重新讀取！
+@st.cache_data
+def load_carrier_excel(file_path, file_timestamp):
     """讀取並載入船東 DG 限制清單 (dg_list.xlsx)"""
     if os.path.exists(file_path):
         return pd.read_excel(file_path, sheet_name=None)
     return None
 
-@st.cache_data(watch=[master_file])
-def load_imdg_master(file_path):
+@st.cache_data
+def load_imdg_master(file_path, file_timestamp):
     """讀取並載入官方 IMDG Master 數據庫 (imdg_master.xlsx)"""
     if os.path.exists(file_path):
         df = pd.read_excel(file_path, dtype=str)
         df.columns = df.columns.astype(str).str.strip()
         return df
     return None
+
+# 取得檔案最後修改時間，如果檔案不存在就給 0
+excel_time = os.path.getmtime(excel_file) if os.path.exists(excel_file) else 0
+master_time = os.path.getmtime(master_file) if os.path.exists(master_file) else 0
+
+# 🚀 載入資料（將時間戳記帶入，達成完美的自動更新防錯機制）
+excel_sheets = load_carrier_excel(excel_file, excel_time)
+raw_master_df = load_imdg_master(master_file, master_time)
 # -------------------------------------------------------------
 
 st.markdown("""
@@ -205,10 +214,6 @@ def format_un_number(un_val):
         return digit_match.group(0).zfill(4)
     return val_str
 
-# 🚀 使用「快取函式」載入 Excel 資料 (如果之前讀過，這邊會一瞬間完成)
-excel_sheets = load_carrier_excel(excel_file)
-raw_master_df = load_imdg_master(master_file)
-
 if excel_sheets is None:
     st.error("❌ CRITICAL ERROR: dg_list.xlsx not found!")
 else:
@@ -218,7 +223,6 @@ else:
         has_master = False
         if raw_master_df is not None:
             try:
-                # 複製一份出來處理，避免污染快取原始資料
                 master_df = raw_master_df.copy()
                 if 'UN Number' in master_df.columns or 'UN' in master_df.columns:
                     un_col = [c for c in master_df.columns if c.lower() in ['un number', 'un', 'un號碼']][0]
@@ -337,7 +341,7 @@ else:
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
                     for sheet_name in search_targets:
-                        df = excel_sheets[sheet_name].copy() # copy 一份避免影響快取資料
+                        df = excel_sheets[sheet_name].copy()
                         df.columns = df.columns.astype(str).str.strip()
                         
                         col_mapping = {}
