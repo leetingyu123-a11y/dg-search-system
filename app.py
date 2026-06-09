@@ -98,7 +98,6 @@ def is_class_matching(input_cls, target_cls):
     input_cls = clean_class_string(input_cls)
     target_cls = clean_class_string(target_cls)
     
-    # 🌟 NEW: If the carrier table defines Class as "ALL", it covers everything!
     if target_cls == 'ALL' or input_cls == 'ALL':
         return True
         
@@ -357,11 +356,13 @@ else:
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        if carrier_restricted_cls == 'ALL':
-                                            label = "Universal DG Policy"
-                                        else:
-                                            label = "Main Class Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
-                                        combined_remarks.append({"col_name": label, "text": r_val})
+                                        # 🌟 UNIQUE CHECK: Only add text if it is NOT a duplicate
+                                        if r_val not in [c["text"] for c in combined_remarks]:
+                                            if carrier_restricted_cls == 'ALL':
+                                                label = "Universal DG Policy"
+                                            else:
+                                                label = "Main Class Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
+                                            combined_remarks.append({"col_name": label, "text": r_val})
 
                         # 3. Compile Status and Extracted Row Details
                         if carrier_matched_rows:
@@ -377,6 +378,7 @@ else:
                                 for r_col in remark_cols:
                                     r_val = str(row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
+                                        # 🌟 UNIQUE CHECK: Deduplicate row level remarks as well
                                         if r_val not in [c["text"] for c in combined_remarks]:
                                             combined_remarks.append({"col_name": r_col, "text": r_val})
 
