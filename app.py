@@ -80,20 +80,20 @@ st.markdown("""
         line-height: 1.6;
         color: #1e293b;
         font-weight: 500;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
         white-space: pre-wrap; 
     }
     .remark-header {
         font-size: 14px !important;
         color: #0284c7;
         font-weight: bold;
-        margin-top: 4px;
+        margin-top: 6px;
     }
     .collapsed-header {
         font-size: 14px !important;
         color: #64748b;
         font-weight: bold;
-        margin-top: 4px;
+        margin-top: 6px;
     }
     .partner-title {
         font-size: 26px !important;
@@ -388,8 +388,11 @@ else:
                                         if r_val not in [c["text"] for c in specific_dg_list]:
                                             specific_dg_list.append({"col_name": r_col, "text": r_val})
 
-                        # 2. Check Global Policy Rules (🎯 重新分配分流邏輯)
+                        # 2. Check Global Policy Rules
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
+                        
+                        universal_counter = 1
+                        
                         for _, g_row in global_lines.iterrows():
                             carrier_restricted_cls = g_row['Clean_Class']
                             
@@ -410,12 +413,14 @@ else:
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        # 🌟 重點優化處：
-                                        # 如果 Class 寫 ALL，代表它是真正的全域通則，留在【第二摺疊】
                                         if carrier_restricted_cls == 'ALL':
                                             if r_val not in [c["text"] for c in collapsed_list]:
-                                                collapsed_list.append({"col_name": "Universal DG Policy", "text": r_val})
-                                        # 如果有寫特定 Class（例如 4），直接拔擢到【第一摺疊：Specific DG Remarks】
+                                                collapsed_list.append({
+                                                    "col_name": "Universal DG Policy", # 這裡保留純文字供後續前端排版判斷
+                                                    "text": r_val,
+                                                    "num": universal_counter
+                                                })
+                                                universal_counter += 1
                                         else:
                                             label = f"Main Class {carrier_restricted_cls} Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
                                             if r_val not in [c["text"] for c in specific_dg_list]:
@@ -463,11 +468,21 @@ else:
                                     specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in specific_dg_list])
                                     st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
                             
-                            # 📂 摺疊 2：通用通則 (只有 UN=ALL 且 Class=ALL 的才會留在這)
+                            # 📂 摺疊 2：通用通則 (🔥 完美去重，只在第一項顯示大標題，後續僅標號)
                             if collapsed_list:
                                 expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
                                 with st.expander(expander_label, expanded=False):
-                                    collapsed_html = "".join([f'<div class="collapsed-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in collapsed_list])
+                                    collapsed_html = ""
+                                    for idx, rem in enumerate(collapsed_list):
+                                        if idx == 0:
+                                            # 第一個條目：顯示完整大標題跟 1.
+                                            header_label = f"Universal DG Policy {rem['num']}."
+                                        else:
+                                            # 後續條目：只秀乾淨的編號數字
+                                            header_label = f"{rem['num']}."
+                                            
+                                        collapsed_html += f'<div class="collapsed-header">📌 {header_label}</div><div class="remark-line">{rem["text"]}</div>'
+                                        
                                     st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
                                     
                             if not specific_dg_list and not collapsed_list:
