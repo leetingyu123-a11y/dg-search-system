@@ -85,7 +85,6 @@ def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
     val_str = str(class_val).strip()
-    # Powerful strip for .0 trailing decimals
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
     match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
@@ -94,7 +93,6 @@ def clean_class_string(class_val):
 def is_class_matching(input_cls, target_cls):
     if not input_cls or not target_cls:
         return False
-    # Clean both strings one more time to prevent 9 vs 9.0 mismatch
     input_cls = clean_class_string(input_cls)
     target_cls = clean_class_string(target_cls)
     
@@ -168,7 +166,6 @@ else:
                     cls_col = [c for c in master_df.columns if any(k in c.lower() for k in ['class', 'division', '類別'])][0]
                     
                     master_df['UN Number'] = master_df[un_col].apply(format_un_number)
-                    # Force clean master class definitions
                     master_df['Class'] = master_df[cls_col].apply(clean_class_string)
                     
                     sub_risk_col_name = None
@@ -205,7 +202,6 @@ else:
             is_valid_input = True
             matched_master_records = []
             
-            # Dynamic Multi-Class Block List
             MULTI_CLASS_UNS = ["1950", "2037"]
             
             if input_un in MULTI_CLASS_UNS and not final_class:
@@ -233,7 +229,6 @@ else:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in the official IMDG Code Master Database!")
                     is_valid_input = False
                 else:
-                    # Packing Group De-duplication Mechanism
                     unique_un_exists = un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk', 'PSN'])
                     
                     for _, master_row in unique_un_exists.iterrows():
@@ -267,7 +262,6 @@ else:
                     
                     master_subrisk_list = extract_subrisks_for_matching(raw_subrisk)
                     display_subrisk_text = format_subrisk_display(raw_subrisk)
-                    
                     subrisk_display = f" (Sub Risk: {display_subrisk_text})" if display_subrisk_text else ""
                     
                     if input_un and current_psn:
@@ -281,12 +275,12 @@ else:
                     
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
+                    # 🌟 Consolidated Carrier Loop (Guarantees One Card Per Carrier)
                     for sheet_name in search_targets:
                         df = excel_sheets[sheet_name]
                         df.columns = df.columns.astype(str).str.strip()
                         
                         col_mapping = {}
-                        # 🌟 HIGHLY ROBUST COLUMN MAPPING LOGIC (Solves the formatting error bugs)
                         for c in df.columns:
                             c_lower = c.lower().replace(" ", "").replace("/", "").replace("_", "")
                             if 'un' in c_lower: col_mapping['UN'] = c
@@ -295,100 +289,101 @@ else:
                             if 'remark' in c_lower and ('has' in c_lower or '狀態' in c_lower): col_mapping['HasRemark'] = c
                             if 'subrisk' in c_lower or '次要' in c_lower or 'subsidiary' in c_lower: col_mapping['SubRisk'] = c
                         
-                        # Emergency fallbacks
                         if 'UN' not in col_mapping:
-                            for c in df.columns:
-                                if 'un' in c.lower(): col_mapping['UN'] = c
+                            for c in df.columns:  if 'un' in c.lower(): col_mapping['UN'] = c
                         if 'Class' not in col_mapping:
-                            for c in df.columns:
-                                if 'class' in c.lower() or 'division' in c.lower(): col_mapping['Class'] = c
+                            for c in df.columns:  if 'class' in c.lower() or 'division' in c.lower(): col_mapping['Class'] = c
                         if 'Prohibited' not in col_mapping:
-                            for c in df.columns:
-                                if 'prohibit' in c.lower() or 'status' in c.lower() or '狀態' in c.lower(): col_mapping['Prohibited'] = c
+                            for c in df.columns:  if 'prohibit' in c.lower() or 'status' in c.lower() or '狀態' in c.lower(): col_mapping['Prohibited'] = c
                         
-                        # Ultimate verification guardrail
                         if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Prohibited' not in col_mapping:
-                            st.error(f"⚠️ Sheet `{sheet_name}` structure error. Column resolution failed. Found headings: {list(df.columns)}")
+                            st.error(f"⚠️ Sheet `{sheet_name}` structure error. Column resolution failed.")
                             continue
                         
                         remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
                         
                         df['Clean_UN'] = df[col_mapping['UN']].fillna('').apply(format_un_number)
                         df['Clean_Class'] = df[col_mapping['Class']].apply(clean_class_string)
-                        
-                        df['Clean_Prohibited'] = df[col_mapping['Prohibited']].fillna('').astype(str).str.strip().str.upper() if 'Prohibited' in col_mapping else ""
+                        df['Clean_Prohibited'] = df[col_mapping['Prohibited']].fillna('').astype(str).str.strip().str.upper()
                         df['Clean_HasRemark'] = df[col_mapping['HasRemark']].fillna('').astype(str).str.strip().str.upper() if 'HasRemark' in col_mapping else ""
                         df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip().apply(clean_class_string) if 'SubRisk' in col_mapping else ""
 
-                        matched_rows = []
-                        global_class_remarks = []
-                        has_global_prohibited = False
-                        global_prohibited_row = None
+                        # Evaluation Bucket for This Carrier Card
+                        carrier_matched_rows = []
+                        combined_remarks = []
+                        is_any_row_prohibited = False
+                        is_any_row_remarked = False
 
-                        # 1. Global Class Rules Scanning
-                        if current_class:
-                            global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
-                            
-                            for _, g_row in global_lines.iterrows():
-                                carrier_restricted_cls = g_row['Clean_Class']
-                                raw_p_val = g_row['Clean_Prohibited']
-                                is_prohibited_status = any(k in raw_p_val for k in ["🔴", "禁收", "YES", "PROHIBITED"]) and (raw_p_val != 'NAN' and raw_p_val != '')
+                        # 1. Check Exact UN Matches First
+                        if input_un:
+                            exact_matches = df[df['Clean_UN'] == input_un]
+                            for _, row in exact_matches.iterrows():
+                                carrier_cls = row['Clean_Class']
+                                carrier_subrisk = row['Clean_SubRisk']
                                 
-                                main_class_hit = is_class_matching(current_class, carrier_restricted_cls)
-                                
-                                sub_risk_hit = False
-                                if master_subrisk_list and carrier_restricted_cls:
-                                    if any(is_class_matching(sr, carrier_restricted_cls) for sr in master_subrisk_list if sr != "P"):
-                                        sub_risk_hit = True
-                                
-                                if main_class_hit or sub_risk_hit:
-                                    if is_prohibited_status:
-                                        has_global_prohibited = True
-                                        global_prohibited_row = g_row
-                                    else:
-                                        matched_rows.append(g_row)
-                                    
-                                    for r_col in remark_cols:
-                                        r_val = str(g_row[r_col]).strip()
-                                        if r_val and r_val.lower() != 'nan' and r_val != '':
-                                            trigger_source = "Main Class" if main_class_hit else f"Sub Risk '{carrier_restricted_cls}'"
-                                            global_class_remarks.append({
-                                                "col_name": f"General Policy via {trigger_source}", 
-                                                "text": r_val
-                                            })
-
-                        # 2. Precision Row Match Routing
-                        if not input_un:
-                            if has_global_prohibited and not matched_rows: 
-                                matched_rows = [global_prohibited_row]
-                        else:
-                            exact_match = df[df['Clean_UN'] == input_un]
-                            if not exact_match.empty:
-                                exact_matched_rows = []
-                                for _, row in exact_match.iterrows():
-                                    carrier_cls = row['Clean_Class']
-                                    carrier_subrisk = row['Clean_SubRisk']
-                                    
-                                    if carrier_cls and not is_class_matching(current_class, carrier_cls):
+                                if carrier_cls and not is_class_matching(current_class, carrier_cls):
+                                    continue
+                                if carrier_subrisk and master_subrisk_list:
+                                    if carrier_subrisk not in master_subrisk_list:
                                         continue
-                                    if carrier_subrisk and master_subrisk_list:
-                                        if carrier_subrisk not in master_subrisk_list:
-                                            continue
-                                    exact_matched_rows.append(row)
-                                
-                                if exact_matched_rows:
-                                    matched_rows = exact_matched_rows
-                                elif has_global_prohibited and not matched_rows:
-                                    matched_rows = [global_prohibited_row]
-                            elif has_global_prohibited and not matched_rows:
-                                matched_rows = [global_prohibited_row]
+                                carrier_matched_rows.append(row)
 
-                        # --- Card Rendering ---
-                        if not matched_rows:
+                        # 2. Check Global Policy Rules (Main Class vs Sub Risk Policy)
+                        global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
+                        for _, g_row in global_lines.iterrows():
+                            carrier_restricted_cls = g_row['Clean_Class']
+                            
+                            # Main Class evaluation
+                            main_class_hit = is_class_matching(current_class, carrier_restricted_cls)
+                            
+                            # Sub Risk evaluation
+                            sub_risk_hit = False
+                            hit_subrisk_val = ""
+                            if master_subrisk_list and carrier_restricted_cls:
+                                for sr in master_subrisk_list:
+                                    if sr != "P" and is_class_matching(sr, carrier_restricted_cls):
+                                        sub_risk_hit = True
+                                        hit_subrisk_val = sr
+                                        break
+                            
+                            if main_class_hit or sub_risk_hit:
+                                carrier_matched_rows.append(g_row)
+                                
+                                # Gather global remarks
+                                for r_col in remark_cols:
+                                    r_val = str(g_row[r_col]).strip()
+                                    if r_val and r_val.lower() != 'nan' and r_val != '':
+                                        label = "Main Class Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
+                                        combined_remarks.append({"col_name": label, "text": r_val})
+
+                        # 3. Compile Status and Extracted Row Details
+                        if carrier_matched_rows:
+                            for row in carrier_matched_rows:
+                                p_text = str(row['Clean_Prohibited']).strip().upper()
+                                r_text = str(row['Clean_HasRemark']).strip().upper()
+                                
+                                if any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
+                                    is_any_row_prohibited = True
+                                if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
+                                    is_any_row_remarked = True
+                                    
+                                # Gather standard row remarks
+                                for r_col in remark_cols:
+                                    r_val = str(row[r_col]).strip()
+                                    if r_val and r_val.lower() != 'nan' and r_val != '':
+                                        # Deduplicate identical messages
+                                        if r_val not in [c["text"] for c in combined_remarks]:
+                                            combined_remarks.append({"col_name": r_col, "text": r_val})
+
+                        # --- Card Rendering Section ---
+                        un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
+                        
+                        if not carrier_matched_rows:
+                            # 🟢 Standard Acceptance Card
                             st.markdown(f"""
                                 <div class="partner-card" style="border-left-color: #10b981;">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {sheet_name} (UN Ref: {input_un if input_un else "Class " + current_class})</span>
+                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
                                         <span class="status-badge" style="background-color: #d1fae5; color: #065f46;">🟢 Standard Acceptance</span>
                                     </div>
                                     <div style="margin-top: 10px;">
@@ -397,55 +392,31 @@ else:
                                 </div>
                             """, unsafe_allow_html=True)
                         else:
-                            for row in matched_rows:
-                                p_text = str(row['Clean_Prohibited']).strip().upper()
-                                r_text = str(row['Clean_HasRemark']).strip().upper()
-                                
-                                carrier_record_cls = clean_class_string(row[col_mapping['Class']]) if pd.notna(row[col_mapping['Class']]) else ""
-                                un_display = row['Clean_UN'] if row['Clean_UN'] != '' else f"Class {current_class} Universal Policy"
-                                if carrier_record_cls and row['Clean_UN'] != '':
-                                    un_display = f"UN {row['Clean_UN']} (Class {carrier_record_cls})"
-                                
-                                # Three-Tier Flow Logic Check
-                                is_prohibited = any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]) and (p_text != 'NAN' and p_text != '')
-                                is_has_remark = any(k in r_text for k in ["🟡", "YES", "TRUE"]) and (r_text != 'NAN' and r_text != '')
-                                
-                                if is_prohibited or has_global_prohibited:
-                                    border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
-                                    display_status = "🔴 Strictly Prohibited"
-                                elif is_has_remark:
-                                    border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
-                                    display_status = "🟡 Conditional Acceptance / Review Remarks"
-                                else:
-                                    border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
-                                    display_status = "🟢 Standard Acceptance (See Notice)"
+                            # 💡 3-Tier Status Priority Flow Control
+                            if is_any_row_prohibited:
+                                border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
+                                display_status = "🔴 Strictly Prohibited"
+                            elif is_any_row_remarked:
+                                border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
+                                display_status = "🟡 Conditional Acceptance / Review Remarks"
+                            else:
+                                border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
+                                display_status = "🟢 Standard Acceptance (See Notice)"
 
-                                collected_remarks = []
-                                for r_col in remark_cols:
-                                    r_val = str(row[r_col]).strip()
-                                    if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        collected_remarks.append({"col_name": r_col, "text": r_val})
-
-                                combined_remarks = []
-                                combined_remarks.extend(collected_remarks)
-                                for g_rem in global_class_remarks:
-                                    if g_rem["text"] not in [c["text"] for c in combined_remarks]:
-                                        combined_remarks.append(g_rem)
-
-                                st.markdown(f"""
-                                    <div class="partner-card" style="border-left-color: {border_color};">
-                                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                                            <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
-                                            <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
-                                        </div>
-                                        <div style="margin-top: 10px;">
-                                            <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 Comprehensive Carrier Remarks:</div>
-                                            <div class="remark-box">
-                                                {"".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in combined_remarks]) if combined_remarks else '<div class="remark-line">Standard conditions apply.</div>'}
-                                            </div>
+                            st.markdown(f"""
+                                <div class="partner-card" style="border-left-color: {border_color};">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
+                                        <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
+                                    </div>
+                                    <div style="margin-top: 10px;">
+                                        <div style="font-weight: bold; color: #64748b; margin-bottom: 5px; font-size: 14px;">📝 Comprehensive Carrier Remarks:</div>
+                                        <div class="remark-box">
+                                            {"".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in combined_remarks]) if combined_remarks else '<div class="remark-line">Standard conditions apply.</div>'}
                                         </div>
                                     </div>
-                                """, unsafe_allow_html=True)
+                                </div>
+                            """, unsafe_allow_html=True)
                 st.markdown("<br><br>", unsafe_allow_html=True)
                             
     except Exception as e:
