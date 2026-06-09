@@ -142,7 +142,11 @@ def clean_class_string(class_val):
     match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
     return match.group(0) if match else val_str
 
-def is_class_matching(input_cls, target_cls):
+def is_class_matching(input_cls, target_cls, exact_mode=False):
+    """
+    匹配 Class 邏輯。
+    exact_mode=True 用於全域通則中，當船東指明特定 Class (如 1.1) 時，不應該被 1.4 模糊匹配到。
+    """
     if not input_cls or not target_cls:
         return False
     input_cls = clean_class_string(input_cls)
@@ -150,6 +154,11 @@ def is_class_matching(input_cls, target_cls):
     
     if target_cls == 'ALL':
         return True
+        
+    # 如果是精準模式，不允許 Class 1 的大類模糊匹配
+    if exact_mode:
+        return input_cls == target_cls
+
     if input_cls.startswith('1') and target_cls.startswith('1'):
         return True
     if input_cls == target_cls:
@@ -355,9 +364,7 @@ else:
                         df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip().apply(clean_class_string) if 'SubRisk' in col_mapping else ""
 
                         carrier_matched_rows = []
-                        is_any_row_prohibited = False
-                        is_any_row_remarked = False
-
+                        
                         specific_dg_list = []  
                         collapsed_list = []    
 
@@ -375,9 +382,10 @@ else:
                                         continue
                                 carrier_matched_rows.append(row)
                                 
+                                # 🌟 優化：HasRemark 如果填的是純 "YES"、"TRUE" 這種無意義導向字眼，不加入備註呈現
                                 if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
                                     hr_val = str(row[col_mapping['HasRemark']]).strip()
-                                    if hr_val and hr_val.lower() != 'nan' and hr_val not in [c["text"] for c in specific_dg_list]:
+                                    if hr_val and hr_val.lower() != 'nan' and hr_val.upper() not in ["YES", "TRUE"] and hr_val not in [c["text"] for c in specific_dg_list]:
                                         specific_dg_list.append({"col_name": "Has Remark", "text": hr_val})
                                 
                                 for r_col in remark_cols:
@@ -396,13 +404,16 @@ else:
                         for _, g_row in global_lines.iterrows():
                             carrier_restricted_cls = g_row['Clean_Class']
                             
-                            main_class_hit = is_class_matching(current_class, carrier_restricted_cls)
+                            # 🎯 核心修正漏洞：如果全域通則有寫特定 Class (如 1.1)，此處開啟 exact_mode=True 精準匹配
+                            # 避免被 1.4 查到別的大類的限制！
+                            is_exact = True if (carrier_restricted_cls and carrier_restricted_cls != 'ALL') else False
+                            main_class_hit = is_class_matching(current_class, carrier_restricted_cls, exact_mode=is_exact)
                             
                             sub_risk_hit = False
                             hit_subrisk_val = ""
                             if master_subrisk_list and carrier_restricted_cls:
                                 for sr in master_subrisk_list:
-                                    if sr != "P" and is_class_matching(sr, carrier_restricted_cls):
+                                    if sr != "P" and is_class_matching(sr, carrier_restricted_cls, exact_mode=is_exact):
                                         sub_risk_hit = True
                                         hit_subrisk_val = sr
                                         break
@@ -416,7 +427,7 @@ else:
                                         if carrier_restricted_cls == 'ALL':
                                             if r_val not in [c["text"] for c in collapsed_list]:
                                                 collapsed_list.append({
-                                                    "col_name": "Universal DG Policy", # 這裡保留純文字供後續前端排版判斷
+                                                    "col_name": "Universal DG Policy",
                                                     "text": r_val,
                                                     "num": universal_counter
                                                 })
@@ -426,7 +437,10 @@ else:
                                             if r_val not in [c["text"] for c in specific_dg_list]:
                                                 specific_dg_list.append({"col_name": label, "text": r_val})
 
-                        # 3. 統計狀態
+                        # 3. 統計狀態（只看真正匹配成功的那些行）
+                        is_any_row_prohibited = False
+                        is_any_row_remarked = False
+                        
                         if carrier_matched_rows:
                             for row in carrier_matched_rows:
                                 p_text = str(row['Clean_Prohibited']).strip().upper()
@@ -442,7 +456,8 @@ else:
                         if is_any_row_prohibited:
                             border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
                             display_status = "🔴 Strictly Prohibited"
-                        elif is_any_row_remarked:
+                        elif is_any_row_remarked or specific_dg_list:
+                            # 🌟 防呆：只要有撈到任何特定特定備註限制，自動升級為黃燈提示
                             border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
                             display_status = "🟡 Conditional Acceptance / Review Remarks"
                         else:
@@ -458,7 +473,7 @@ else:
                             </div>
                         """, unsafe_allow_html=True)
 
-                        if not carrier_matched_rows:
+                        if not carrier_matched_rows and not specific_dg_list:
                             st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                         else:
                             # 📂 摺疊 1：專屬特定 DG 項目 / 針對大類類別的政策
@@ -468,19 +483,16 @@ else:
                                     specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in specific_dg_list])
                                     st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
                             
-                            # 📂 摺疊 2：通用通則 (🔥 完美去重，只在第一項顯示大標題，後續僅標號)
+                            # 📂 摺疊 2：通用通則
                             if collapsed_list:
                                 expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
                                 with st.expander(expander_label, expanded=False):
                                     collapsed_html = ""
                                     for idx, rem in enumerate(collapsed_list):
                                         if idx == 0:
-                                            # 第一個條目：顯示完整大標題跟 1.
                                             header_label = f"Universal DG Policy {rem['num']}."
                                         else:
-                                            # 後續條目：只秀乾淨的編號數字
                                             header_label = f"{rem['num']}."
-                                            
                                         collapsed_html += f'<div class="collapsed-header">📌 {header_label}</div><div class="remark-line">{rem["text"]}</div>'
                                         
                                     st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
