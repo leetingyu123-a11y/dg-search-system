@@ -32,6 +32,33 @@ st.markdown("""
         display: inline-block;
         margin-bottom: 0px;
     }
+    /* 🔴 新增：極顯眼 Has Remark 專屬警示框樣式 */
+    .has-remark-alert-box {
+        background-color: #fffbeb;
+        padding: 15px;
+        border-radius: 6px;
+        border: 2px dashed #d97706;
+        border-left: 8px solid #f59e0b;
+        margin-top: 10px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(245, 158, 11, 0.1);
+    }
+    .has-remark-title {
+        font-size: 16px !important;
+        color: #b45309;
+        font-weight: bold;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+    }
+    .has-remark-line {
+        font-size: 22px !important; /* 字體加大，極度吸睛 */
+        line-height: 1.5;
+        color: #78350f;
+        font-weight: bold;
+        white-space: pre-wrap;
+    }
+    /* 🔵 一般特定項目備註框樣式 */
     .remark-box {
         background-color: #ffffff;
         padding: 15px;
@@ -50,7 +77,14 @@ st.markdown("""
     }
     .remark-header {
         font-size: 14px !important;
-        color: #e11d48;
+        color: #0284c7;
+        font-weight: bold;
+        margin-top: 4px;
+    }
+    /* ⚪ 折疊區內部標題樣式 */
+    .collapsed-header {
+        font-size: 14px !important;
+        color: #64748b;
         font-weight: bold;
         margin-top: 4px;
     }
@@ -154,7 +188,7 @@ def format_un_number(un_val):
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
     if val_str.upper() == 'ALL' or val_str == '':
-        return 'ALL' # 確保空值或 ALL 統一識別為 'ALL'
+        return 'ALL'
     if val_str.isdigit():
         return val_str.zfill(4)
     digit_match = re.search(r'\d+', val_str)
@@ -196,7 +230,7 @@ else:
             except Exception as e:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
-        # Interface Layout: Class Input | UN Number Input
+        # Interface Layout
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("### 1. Enter Class / Division")
@@ -204,7 +238,6 @@ else:
         with col2:
             st.markdown("### 2. Enter UN Number")
             raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", label_visibility="collapsed").strip()
-            # 注意：這裡如果是使用者手動輸入，空值不應變成長度為4的 'ALL'
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
             if input_un == 'ALL': 
                 input_un = ""
@@ -330,9 +363,10 @@ else:
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
 
-                        # 🌟 改用「要直接攤開」與「要折疊」兩大分流水桶
-                        direct_show_list = []  # 精準指定特定 UN 的條款：直接攤開顯示
-                        collapsed_list = []    # 欄位為 ALL / 空白的條款：收進折疊區
+                        # 🌟 重新規劃分流水桶
+                        has_remark_list = []     # 獨立區：高顯眼度特殊醒目提示
+                        specific_remark_list = [] # 攤開區：針對此特定 UN 的條款
+                        collapsed_list = []       # 折疊區：Excel 裡為 ALL 或空白的通用條款
 
                         # 1. Check Exact UN Matches First
                         if input_un:
@@ -348,19 +382,20 @@ else:
                                         continue
                                 carrier_matched_rows.append(row)
                                 
-                                # 🟢 這是精準比對到的特定項目 -> 放入直接顯示水桶
+                                # ⚡ 【分離出來】Has Remark 狀態提示
                                 if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
                                     hr_val = str(row[col_mapping['HasRemark']]).strip()
-                                    if hr_val and hr_val.lower() != 'nan' and hr_val not in [c["text"] for c in direct_show_list]:
-                                        direct_show_list.append({"col_name": "Has Remark", "text": hr_val})
+                                    if hr_val and hr_val.lower() != 'nan' and hr_val not in [c["text"] for c in has_remark_list]:
+                                        has_remark_list.append({"col_name": "Has Remark 狀態提示", "text": hr_val})
                                 
+                                # 📝 專屬項目的特定 Remark
                                 for r_col in remark_cols:
                                     if 'HasRemark' in col_mapping and r_col == col_mapping['HasRemark']:
                                         continue
                                     r_val = str(row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        if r_val not in [c["text"] for c in direct_show_list]:
-                                            direct_show_list.append({"col_name": r_col, "text": r_val})
+                                        if r_val not in [c["text"] for c in specific_remark_list]:
+                                            specific_remark_list.append({"col_name": r_col, "text": r_val})
 
                         # 2. Check Global Policy Rules (Main Class vs Sub Risk Policy)
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
@@ -381,7 +416,6 @@ else:
                             if main_class_hit or sub_risk_hit:
                                 carrier_matched_rows.append(g_row)
                                 
-                                # 🟡 這是從 Excel 的 ALL / 空白抓出來的通則 -> 放入折疊水桶
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
@@ -425,23 +459,28 @@ else:
                             </div>
                         """, unsafe_allow_html=True)
 
-                        # 🌟 精準分流呈現
+                        # 呈現機制
                         if not carrier_matched_rows:
                             st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                         else:
-                            # 1. 專屬特定 UN 備註：【直接攤開】
-                            if direct_show_list:
-                                direct_html = "".join([f'<div class="remark-header" style="color:#0284c7;">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in direct_show_list])
+                            # 🔥 1. 第一關：【高顯眼度獨立警示框】Has Remark 狀態提示
+                            if has_remark_list:
+                                hr_html = "".join([f'<div class="has-remark-title">⚠️ 🚨 狀態警示 【{rem["col_name"]}】：</div><div class="has-remark-line">{rem["text"]}</div>' for rem in has_remark_list])
+                                st.markdown(f'<div class="has-remark-alert-box">{hr_html}</div>', unsafe_allow_html=True)
+                            
+                            # 📘 2. 第二關：【直接攤開區】專屬特定 UN 備註
+                            if specific_remark_list:
+                                direct_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in specific_remark_list])
                                 st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{direct_html}</div>', unsafe_allow_html=True)
                             
-                            # 2. Excel 為 ALL/空白的通則：【自動折疊】
+                            # 📁 3. 第三關：【自動折疊區】Excel 為 ALL/空白的通則
                             if collapsed_list:
                                 expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
                                 with st.expander(expander_label, expanded=False):
-                                    collapsed_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in collapsed_list])
+                                    collapsed_html = "".join([f'<div class="collapsed-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in collapsed_list])
                                     st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
                                     
-                            if not direct_show_list and not collapsed_list:
+                            if not has_remark_list and not specific_remark_list and not collapsed_list:
                                 st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
                                     
                     st.markdown("<br>", unsafe_allow_html=True)
