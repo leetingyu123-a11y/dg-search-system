@@ -565,12 +565,17 @@ else:
                                     with st.expander(f"📋 View Specific DG Remarks ({len(item['specific_dg_list'])} Items)", expanded=False):
                                         specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in item['specific_dg_list']])
                                         st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
-                                if item['collapsed_list']:
+if item['collapsed_list']:
                                     with st.expander(f"📄 View Global / Universal DG Policies ({len(item['collapsed_list'])} Items)", expanded=False):
-                                        collapsed_html = "".join([f'<div class="collapsed-header">📌 {f"Universal DG Policy {rem[\"num\"]}. " if idx==0 else f"{rem[\"num\"]}. "}</div><div class="remark-line">{rem[\"text\"]}</div>' for idx, rem in enumerate(item['collapsed_list'])])
+                                        # --- 修正後的安全寫法 (將複雜單行拆解為 for 迴圈) ---
+                                        collapsed_html_list = []
+                                        for idx, rem in enumerate(item['collapsed_list']):
+                                            num_tag = f"Universal DG Policy {rem['num']}. " if idx == 0 else f"{rem['num']}. "
+                                            line_html = f'<div class="collapsed-header">📌 {num_tag}</div><div class="remark-line">{rem["text"]}</div>'
+                                            collapsed_html_list.append(line_html)
+                                        collapsed_html = "".join(collapsed_html_list)
+                                        # --------------------------------------------------
                                         st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
-                            st.markdown("<br>", unsafe_allow_html=True)
-                    st.markdown("<br><br>", unsafe_allow_html=True)
                             
     except Exception as e:
         st.error(f"❌ File reading failed. Error message: {e}")
