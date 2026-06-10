@@ -130,7 +130,7 @@ if not st.session_state.authenticated:
                 
         st.caption("💡 Didn't receive the email? Check your spam folder or click 'Back / Change Email' to resend.")
     st.stop()
-
+    
 # ==============================================================================
 # Your core "Carrier DG Restriction Query System" code resumes below...
 # ==============================================================================
