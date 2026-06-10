@@ -1,73 +1,37 @@
 import streamlit as st
 import random
 import smtplib
-import time
-import secrets
-import json
-import os
 from email.mime.text import MIMEText
 from email.header import Header
-from streamlit_local_storage import LocalStorage  # 引入在地儲存套件
+import extra_streamlit_components as stx  # Cookie manager
 
 # ==============================================================================
 # SETTINGS: Dedicated Gmail account for sending emails
 # ==============================================================================
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
-SENDER_EMAIL = "timbot000001@gmail.com"     # 請輸入你的發信 Gmail
-SENDER_PASSWORD = "kooh dutv dggo ecfm"          # 請輸入你的 16 位元應用程式密碼
+SENDER_EMAIL = "your_gmail_account@gmail.com"     # 請輸入你的發信 Gmail
+SENDER_PASSWORD = "xxxx xxxx xxxx xxxx"          # 請輸入你的 16 位元應用程式密碼
 
 # ==============================================================================
-# CORE MODULE: Persistent LocalStorage Auth (24-Hour Expiration - Perfect Version)
+# CORE MODULE: Iframe-Safe Cookie Verification (24-Hour Expiration - PERFECT VERSION)
 # ==============================================================================
 
-# 1. 初始化 LocalStorage 元件
-local_storage = LocalStorage()
+# 1. 初始化 Cookie 管理器（指定固定 key 避免重頭載入衝突）
+cookie_manager = stx.CookieManager(key="auth_cookie_manager")
 
-# 2. 權杖檔案資料庫（讓驗證紀錄在雲端伺服器上安全存活）
-TOKEN_FILE = "active_tokens.json"
+# 2. 從瀏覽器嘗試讀取 Cookie
+auth_cookie = cookie_manager.get(cookie="sys_auth_verified")
+saved_email = cookie_manager.get(cookie="sys_auth_email")
 
-def load_token_db():
-    if os.path.exists(TOKEN_FILE):
-        try:
-            with open(TOKEN_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_token_db(db):
-    try:
-        with open(TOKEN_FILE, "w") as f:
-            json.dump(db, f)
-    except:
-        pass
-
-# 讀取當前伺服器中所有有效的通行證
-token_db = load_token_db()
-current_timestamp = time.time()
-
-# 自動清理過期的 24 小時通行證
-db_changed = False
-expired_tokens = [t for t, data in token_db.items() if current_timestamp > data["expires_at"]]
-for t in expired_tokens:
-    del token_db[t]
-    db_changed = True
-if db_changed:
-    save_token_db(token_db)
-
-# 3. 核心自動登入邏輯：去瀏覽器的「隱形置物櫃」拿 Token
-# 提示：Streamlit 元件載入是非同步的，網頁剛開的千分之一秒會是 None，隨後抓到值會自動、無感地重新整理進系統
-stored_token = local_storage.getItem("sys_fast_pass_token")
-
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-# 如果瀏覽器置物櫃有 Token，且伺服器也對得到、沒過期 -> 直接判定登入成功！
-if stored_token and stored_token in token_db:
-    if current_timestamp <= token_db[stored_token]["expires_at"]:
-        st.session_state.authenticated = True
-        st.session_state.user_email = token_db[stored_token]["email"]
+# 3. 檢查驗證狀態
+if auth_cookie == "true":
+    st.session_state.authenticated = True
+    if saved_email:
+        st.session_state.user_email = saved_email
+else:
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
 
 # 初始化其他必要的 Session 變數
 if "otp_sent" not in st.session_state:
@@ -145,19 +109,24 @@ if not st.session_state.authenticated:
                 if otp_input.strip() == st.session_state.real_otp:
                     st.session_state.authenticated = True
                     
-                    # 🔑 產生一把安全的 24 小時隨機通行權杖
-                    fast_pass_token = secrets.token_hex(12)
-                    
-                    # 重新讀取並將權杖寫入雲端檔案資料庫
-                    token_db = load_token_db()
-                    token_db[fast_pass_token] = {
-                        "email": st.session_state.user_email,
-                        "expires_at": time.time() + 86400  # 精準維持 24 小時有效
-                    }
-                    save_token_db(token_db)
-                    
-                    # 💾 重點：把權杖塞進同仁瀏覽器的 LocalStorage 置物櫃中
-                    local_storage.setItem("sys_fast_pass_token", fast_pass_token)
+                    # 🍪 核心修正：強迫設定為 same_site="none" 並開啟 secure=True，繞過瀏覽器對 iframe 的封鎖
+                    # 必須個別給予獨立的 key 參數，避免 Streamlit 報錯 Duplicate Widget ID
+                    cookie_manager.set(
+                        "sys_auth_verified", 
+                        "true", 
+                        key="set_status_cookie", 
+                        max_age=86400, 
+                        same_site="none", 
+                        secure=True
+                    )
+                    cookie_manager.set(
+                        "sys_auth_email", 
+                        st.session_state.user_email, 
+                        key="set_email_cookie", 
+                        max_age=86400, 
+                        same_site="none", 
+                        secure=True
+                    )
                     
                     st.success("🔓 Verification successful! Logging in...")
                     st.rerun()
