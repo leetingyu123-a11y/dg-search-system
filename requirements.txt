@@ -1,3 +1,4 @@
 pandas
 openpyxl
 extra-streamlit-components
+streamlit-local-storage==0.0.25
