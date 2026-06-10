@@ -132,7 +132,7 @@ st.markdown("""
 st.title("🚢 Carrier DG Prohibited List Query System")
 
 # -------------------------------------------------------------
-# 🔄 初始化 Session State 暫存區 (包含簡化版歷史紀錄)
+# 🔄 初始化 Session State 暫存區 (歷史紀錄上限改為 10 筆)
 # -------------------------------------------------------------
 if "search_submitted" not in st.session_state:
     st.session_state.search_submitted = False
@@ -156,11 +156,11 @@ def handle_search():
         st.session_state.last_query = query_payload
         st.session_state.search_submitted = True
         
-        # 紀錄歷史：若不重複則塞入最上方，最多保留 5 筆
+        # 紀錄歷史：若不重複則塞入最上方，最多保留 10 筆
         history_display = f"UN {un_val if un_val else 'ALL'} / Cls {cls_val if cls_val else 'ALL'}"
         if history_display not in [h["display"] for h in st.session_state.history_list]:
             st.session_state.history_list.insert(0, {"display": history_display, "data": query_payload})
-            if len(st.session_state.history_list) > 5:
+            if len(st.session_state.history_list) > 10:
                 st.session_state.history_list.pop()
     else:
         st.session_state.search_submitted = False
@@ -284,13 +284,11 @@ else:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
         # -------------------------------------------------------------
-        # 📂 SIMPLIFIED SIDEBAR (簡化好看版歷史紀錄)
+        # 📂 SIMPLIFIED SIDEBAR (移除大計數器，保留乾淨 10 筆歷史)
         # -------------------------------------------------------------
         with st.sidebar:
             st.markdown("### 🔍 Search Intelligence")
-            st.metric(label="Recent Queries Tracked", value=len(st.session_state.history_list))
-            st.markdown("---")
-            st.markdown("#### 🕒 Quick Recall (Last 5)")
+            st.markdown("#### 🕒 Quick Recall (Last 10)")
             
             if not st.session_state.history_list:
                 st.caption("No recent searches. History is clear.")
