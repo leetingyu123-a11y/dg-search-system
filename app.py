@@ -14,7 +14,7 @@ SENDER_EMAIL = "timbot000001@gmail.com"        # 填入發信用的 Gmail
 SENDER_PASSWORD = "kooh dutv dggo ecfm"     # 填入 16 位元的「應用程式密碼」
 
 # ==============================================================================
-# 核心外掛：Cookie 記憶型 - 公司信箱動態驗證碼 (OTP) 24小時免驗證版
+# 核心外掛：Cookie 記憶型 - 公司信箱動態驗證碼 (OTP) 24小時免驗證版 (英文信件版)
 # ==============================================================================
 
 # 1. 初始化 Cookie 管理器
@@ -28,7 +28,7 @@ saved_email = cookie_manager.get(cookie="sys_auth_email")
 if "authenticated" not in st.session_state:
     if auth_cookie == "true":
         st.session_state.authenticated = True
-        st.session_state.user_email = saved_email if saved_email else "已驗證同仁"
+        st.session_state.user_email = saved_email if saved_email else "Authenticated User"
     else:
         st.session_state.authenticated = False
 
@@ -43,18 +43,22 @@ if "user_email" not in st.session_state:
         st.session_state.user_email = ""
 
 def send_otp_email(to_email, otp_code):
-    """ 透過 Gmail SMTP 自動寄送驗證碼 """
+    """ 透過 Gmail SMTP 自動寄送英文驗證碼 """
+    # 📝 郵件內文改為全英文
     mail_content = (
-        f"您好：\n\n"
-        f"您正在嘗試登入船東危險品查詢系統。\n"
-        f"您的安全驗證碼為：【 {otp_code} 】\n\n"
-        f"請於網頁中輸入此驗證碼完成身分確認。\n"
-        f"資安提醒：請勿將此驗證碼提供給外部人員。"
+        f"Dear Colleague,\n\n"
+        f"You are attempting to log in to the Carrier DG Restriction Query System.\n"
+        f"Your security verification code is: 【 {otp_code} 】\n\n"
+        f"Please enter this code on the webpage to complete your identity verification. "
+        f"The verification code is valid until the browser tab is closed.\n\n"
+        f"Security Notice: Please do not share this verification code with external personnel."
     )
+    
     msg = MIMEText(mail_content, 'plain', 'utf-8')
-    msg['From'] = Header(f"危險品系統自動發信 <{SENDER_EMAIL}>", 'utf-8')
+    # 📝 寄件者名稱與主旨改為全英文
+    msg['From'] = Header(f"DG System Auto-Mail <{SENDER_EMAIL}>", 'utf-8')
     msg['To'] = Header(to_email, 'utf-8')
-    msg['Subject'] = Header("【安全驗證】船東危險品查詢系統 - 動態登入驗證碼", 'utf-8')
+    msg['Subject'] = Header("[Security Verification] Carrier DG Restriction Query System - OTP Code", 'utf-8')
     
     try:
         server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
@@ -63,7 +67,7 @@ def send_otp_email(to_email, otp_code):
         server.quit()
         return True
     except Exception as e:
-        st.error(f"郵件發送失敗，請檢查 SMTP 設定或稍後再試。錯誤訊息: {e}")
+        st.error(f"Failed to send email. Please check SMTP settings. Error: {e}")
         return False
 
 # --- UI 驗證介面呈現 ---
@@ -109,7 +113,7 @@ if not st.session_state.authenticated:
                 if otp_input.strip() == st.session_state.real_otp:
                     st.session_state.authenticated = True
                     
-                    # 🍪 【關鍵升級】驗證成功，塞入 Cookie 記憶。max_age = 86400 秒 (剛好 24 小時)
+                    # 🍪 驗證成功，塞入 Cookie 記憶 24 小時 (86400秒)
                     cookie_manager.set("sys_auth_verified", "true", max_age=86400)
                     cookie_manager.set("sys_auth_email", st.session_state.user_email, max_age=86400)
                     
@@ -125,6 +129,12 @@ if not st.session_state.authenticated:
                 
         st.caption("💡 沒收到信？請檢查垃圾信箱，或點擊「返回修改信箱」重新發送。")
     st.stop()
+
+# ==============================================================================
+# 3. 這裡以下，完全接回您原本那一長串的「船東危險品禁裝清單查詢系統」程式碼
+# ==============================================================================
+# 側邊欄加上登入者提示
+st.sidebar.info(f"👤 當前登入：{st.session_state.user_email}")
 
 # ==============================================================================
 # 3. 這裡以下，完全接回您原本那一長串的「船東危險品禁裝清單查詢系統」程式碼
