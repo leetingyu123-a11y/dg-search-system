@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import re
+import unicodedata
 
 # Set page title and wide layout
 st.set_page_config(page_title="Carrier DG Prohibited List Query System", layout="wide")
@@ -41,6 +42,7 @@ excel_sheets = load_carrier_excel(excel_file, excel_time)
 raw_master_df = load_imdg_master(master_file, master_time)
 # -------------------------------------------------------------
 
+# CSS 樣式注入
 st.markdown("""
     <style>
     .psn-card {
@@ -126,16 +128,69 @@ st.markdown("""
         font-weight: 600 !important;       
         color: #64748b !important;         
     }
+    
+    /* 歷史紀錄側邊欄按鈕視覺微調 */
+    .stSidebar .stButton>button {
+        text-align: left !important;
+        justify-content: flex-start !important;
+        font-size: 14px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🚢 Carrier DG Prohibited List Query System")
 
+# -------------------------------------------------------------
+# 🛠️ SESSION STATE & HISTORY LOGIC (歷史紀錄與防呆機制)
+# -------------------------------------------------------------
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+if "search_trigger" not in st.session_state:
+    st.session_state.search_trigger = False
+
+# 初始化輸入框的預設值暫存器
+if "input_un_value" not in st.session_state:
+    st.session_state.input_un_value = ""
+if "input_class_value" not in st.session_state:
+    st.session_state.input_class_value = ""
+
+# 點擊歷史紀錄時的觸發函式
+def click_history(hist_un, hist_class):
+    st.session_state.input_un_value = hist_un
+    st.session_state.input_class_value = hist_class
+    st.session_state.search_trigger = True
+
+# 側邊欄：歷史查詢紀錄介面
+with st.sidebar:
+    st.markdown("## ⏳ Search History")
+    if not st.session_state.history:
+        st.caption("No recent searches yet.")
+    else:
+        st.markdown("依序顯示最近 5 筆查詢，點擊可直接重查：")
+        for idx, item in enumerate(st.session_state.history):
+            label_text = f"📋 UN {item['un']} [Class {item['class']}]" if item['un'] else f"📋 Class {item['class']} (Global)"
+            st.button(
+                label_text, 
+                key=f"hist_btn_{idx}", 
+                on_click=click_history, 
+                args=(item['un'], item['class']),
+                use_container_width=True
+            )
+        
+        if st.button("🗑️ Clear History", use_container_width=True, type="secondary"):
+            st.session_state.history = []
+            st.rerun()
+
+# -------------------------------------------------------------
+# 🧼 DATA CLEANING & MATCHING FUNCTIONS
+# -------------------------------------------------------------
 def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
-    val_str = str(class_val).strip()
-    if val_str.upper() == 'ALL':
+    # 🌟 防呆：利用 unicodedata 把萬惡的全形數字轉成半形
+    val_str = unicodedata.normalize('NFKC', str(class_val)).strip().upper()
+    if 'ALL' in val_str:
         return 'ALL'
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
@@ -143,10 +198,6 @@ def clean_class_string(class_val):
     return match.group(0) if match else val_str
 
 def is_class_matching(input_cls, target_cls, exact_mode=False):
-    """
-    匹配 Class 邏輯。
-    exact_mode=True 用於全域通則中，當船東指明特定 Class (如 1.1) 時，不應該被 1.4 模糊匹配到。
-    """
     if not input_cls or not target_cls:
         return False
     input_cls = clean_class_string(input_cls)
@@ -155,7 +206,6 @@ def is_class_matching(input_cls, target_cls, exact_mode=False):
     if target_cls == 'ALL':
         return True
         
-    # 如果是精準模式，不允許 Class 1 的大類模糊匹配
     if exact_mode:
         return input_cls == target_cls
 
@@ -200,25 +250,28 @@ def format_un_number(un_val):
     if isinstance(un_val, float):
         if un_val.is_integer():
             un_val = int(un_val)
-    val_str = str(un_val).strip()
-    if val_str.endswith('.0'):
-        val_str = val_str[:-2]
+    
+    # 🌟 防呆：先把全形轉半形，並用正規表達式把所有不是數字的怪字（如 UN, u.n., 空格）全濾掉
+    val_str = unicodedata.normalize('NFKC', str(un_val)).strip()
     if val_str.upper() == 'ALL' or val_str == '':
         return 'ALL'
-    if val_str.isdigit():
-        return val_str.zfill(4)
-    digit_match = re.search(r'\d+', val_str)
-    if digit_match:
-        return digit_match.group(0).zfill(4)
+        
+    pure_digits = re.sub(r'[^0-9]', '', val_str)
+    if pure_digits:
+        return pure_digits.zfill(4)
+        
     return val_str
 
+# -------------------------------------------------------------
+# 🖥️ INTERFACE LAYOUT (查詢主畫面)
+# -------------------------------------------------------------
 if excel_sheets is None:
     st.error("❌ CRITICAL ERROR: dg_list.xlsx not found!")
 else:
     try:
         all_partners = [sheet for sheet in excel_sheets.keys() if not (sheet.startswith("Sheet") and excel_sheets[sheet].empty)]
-        
         has_master = False
+        
         if raw_master_df is not None:
             try:
                 master_df = raw_master_df.copy()
@@ -244,14 +297,26 @@ else:
             except Exception as e:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
-        # Interface Layout
+        # 使用三個欄位排版輸入介面
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("### 1. Enter Class / Division")
-            user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
+            user_input_class = st.text_input(
+                "Class Input", 
+                value=st.session_state.input_class_value,
+                placeholder="e.g., 1, 2.3, 3", 
+                label_visibility="collapsed"
+            ).strip()
         with col2:
             st.markdown("### 2. Enter UN Number")
-            raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", label_visibility="collapsed").strip()
+            raw_input_un = st.text_input(
+                "UN Number Input", 
+                value=st.session_state.input_un_value,
+                placeholder="e.g., 0005, 1950, 2430", 
+                label_visibility="collapsed"
+            ).strip()
+            
+            # 即時處理防呆清洗
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
             if input_un == 'ALL': 
                 input_un = ""
@@ -260,7 +325,17 @@ else:
             partner_options = ["ALL CARRIERS"] + all_partners
             selected_partner = st.selectbox("Partner Filter", partner_options, label_visibility="collapsed")
 
-        if st.button("Search Database", type="primary", use_container_width=True):
+        # 搜尋發動條件：點擊按鈕 OR 點擊歷史紀錄觸發
+        search_clicked = st.button("Search Database", type="primary", use_container_width=True)
+        
+        if search_clicked or st.session_state.search_trigger:
+            # 重置觸發器狀態
+            st.session_state.search_trigger = False
+            
+            # 同步將當前輸入值寫入快取，確保重新渲染時文字不會消失
+            st.session_state.input_class_value = user_input_class
+            st.session_state.input_un_value = raw_input_un
+            
             final_class = clean_class_string(user_input_class) if user_input_class else ""
             is_valid_input = True
             matched_master_records = []
@@ -315,7 +390,14 @@ else:
             if is_valid_input and not input_un and final_class:
                 matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Category Search"})
 
+            # 成功查到資料，將此條件塞入 Session 歷史紀錄 (最多保存 5 筆最新不重複)
             if is_valid_input and matched_master_records:
+                current_search_log = {"un": input_un, "class": final_class}
+                if current_search_log not in st.session_state.history:
+                    st.session_state.history.insert(0, current_search_log)
+                    if len(st.session_state.history) > 5:
+                        st.session_state.history.pop()
+                
                 st.markdown("---")
                 
                 for record in matched_master_records:
@@ -337,6 +419,11 @@ else:
                         """, unsafe_allow_html=True)
                     
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
+                    
+                    # 🌟 核心優化：建立燈號分類桶，用來實現「紅燈置頂」排版
+                    prohibited_bucket = []
+                    remarked_bucket = []
+                    standard_bucket = []
                     
                     for sheet_name in search_targets:
                         df = excel_sheets[sheet_name].copy()
@@ -364,7 +451,6 @@ else:
                         df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip().apply(clean_class_string) if 'SubRisk' in col_mapping else ""
 
                         carrier_matched_rows = []
-                        
                         specific_dg_list = []  
                         collapsed_list = []    
 
@@ -382,7 +468,6 @@ else:
                                         continue
                                 carrier_matched_rows.append(row)
                                 
-                                # 🌟 優化：HasRemark 如果填的是純 "YES"、"TRUE" 這種無意義導向字眼，不加入備註呈現
                                 if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
                                     hr_val = str(row[col_mapping['HasRemark']]).strip()
                                     if hr_val and hr_val.lower() != 'nan' and hr_val.upper() not in ["YES", "TRUE"] and hr_val not in [c["text"] for c in specific_dg_list]:
@@ -394,18 +479,14 @@ else:
                                     r_val = str(row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
                                         if r_val not in [c["text"] for c in specific_dg_list]:
-                                            specific_dg_list.append({"col_name": r_col, "text": r_val})
+                                            specific_dg_list.append({"col_name": str(r_col), "text": r_val})
 
                         # 2. Check Global Policy Rules
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
-                        
                         universal_counter = 1
                         
                         for _, g_row in global_lines.iterrows():
                             carrier_restricted_cls = g_row['Clean_Class']
-                            
-                            # 🎯 核心修正漏洞：如果全域通則有寫特定 Class (如 1.1)，此處開啟 exact_mode=True 精準匹配
-                            # 避免被 1.4 查到別的大類的限制！
                             is_exact = True if (carrier_restricted_cls and carrier_restricted_cls != 'ALL') else False
                             main_class_hit = is_class_matching(current_class, carrier_restricted_cls, exact_mode=is_exact)
                             
@@ -437,7 +518,7 @@ else:
                                             if r_val not in [c["text"] for c in specific_dg_list]:
                                                 specific_dg_list.append({"col_name": label, "text": r_val})
 
-                        # 3. 統計狀態（只看真正匹配成功的那些行）
+                        # 3. 統計狀態燈號
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
                         
@@ -450,14 +531,40 @@ else:
                                 if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
                                     is_any_row_remarked = True
 
-                        # --- Card Rendering Section ---
-                        un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
-                        
+                        # 決定此船東最終燈號，並打包丟進對應的排序桶中
+                        partner_data = {
+                            "sheet_name": sheet_name,
+                            "carrier_matched_rows": carrier_matched_rows,
+                            "specific_dg_list": specific_dg_list,
+                            "collapsed_list": collapsed_list
+                        }
+
                         if is_any_row_prohibited:
+                            prohibited_bucket.append(partner_data)
+                        elif is_any_row_remarked or specific_dg_list:
+                            remarked_bucket.append(partner_data)
+                        else:
+                            standard_bucket.append(partner_data)
+
+                    # 🌟 渲染 Section：按照【紅燈 -> 黃燈 -> 綠燈】的順序輸出到畫面上
+                    sorted_render_list = (
+                        [("prohibited", item) for item in prohibited_bucket] +
+                        [("remarked", item) for item in remarked_bucket] +
+                        [("standard", item) for item in standard_bucket]
+                    )
+
+                    un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
+                    
+                    for status_type, item in sorted_render_list:
+                        sheet_name = item["sheet_name"]
+                        specific_dg_list = item["specific_dg_list"]
+                        collapsed_list = item["collapsed_list"]
+                        carrier_matched_rows = item["carrier_matched_rows"]
+                        
+                        if status_type == "prohibited":
                             border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
                             display_status = "🔴 Strictly Prohibited"
-                        elif is_any_row_remarked or specific_dg_list:
-                            # 🌟 防呆：只要有撈到任何特定特定備註限制，自動升級為黃燈提示
+                        elif status_type == "remarked":
                             border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
                             display_status = "🟡 Conditional Acceptance / Review Remarks"
                         else:
@@ -480,7 +587,7 @@ else:
                             if specific_dg_list:
                                 specific_label = f"📋 View Specific DG Remarks ({len(specific_dg_list)} Items)"
                                 with st.expander(specific_label, expanded=False):
-                                    specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in specific_dg_list])
+                                    specific_html = "".join([f'<div class="remark-header">📌 [{str(rem["col_name"])}]</div><div class="remark-line">{str(rem["text"])}</div>' for rem in specific_dg_list])
                                     st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
                             
                             # 📂 摺疊 2：通用通則
@@ -493,7 +600,8 @@ else:
                                             header_label = f"Universal DG Policy {rem['num']}."
                                         else:
                                             header_label = f"{rem['num']}."
-                                        collapsed_html += f'<div class="collapsed-header">📌 {header_label}</div><div class="remark-line">{rem["text"]}</div>'
+                                        safe_text = str(rem["text"]).strip()
+                                        collapsed_html += f'<div class="collapsed-header">📌 {header_label}</div><div class="remark-line">{safe_text}</div>'
                                         
                                     st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
                                     
@@ -517,7 +625,7 @@ st.markdown("""
         <div style="margin-bottom: 5px;">
             Copyright © 2026 IAL DG TEAM. All Rights Reserved.
         </div>
-        <div style="font-size: 13px; color: #94a3b8;">
+        <div style="font-size: 13px; color: #38bdf8;">
             Any issue and user feedback plz contact <a href="mailto:tim.lee@interasialine.com" style="color: #38bdf8; text-decoration: none; font-weight: bold;">tim.lee@interasialine.com</a> via Teams
         </div>
     </div>
