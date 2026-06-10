@@ -132,7 +132,7 @@ st.markdown("""
 st.title("🚢 Carrier DG Prohibited List Query System")
 
 # -------------------------------------------------------------
-# 🔄 初始化 Session State 暫存區 (歷史紀錄上限改為 10 筆)
+# 🔄 初始化 Session State 暫存區
 # -------------------------------------------------------------
 if "search_submitted" not in st.session_state:
     st.session_state.search_submitted = False
@@ -156,8 +156,12 @@ def handle_search():
         st.session_state.last_query = query_payload
         st.session_state.search_submitted = True
         
-        # 紀錄歷史：若不重複則塞入最上方，最多保留 10 筆
-        history_display = f"UN {un_val if un_val else 'ALL'} / Cls {cls_val if cls_val else 'ALL'}"
+        # 建立純淨的歷史顯示名稱 (只留 UN 號碼，若無 UN 則留 Class)
+        if un_val:
+            history_display = f"UN {un_val}"
+        else:
+            history_display = f"Class {cls_val}"
+            
         if history_display not in [h["display"] for h in st.session_state.history_list]:
             st.session_state.history_list.insert(0, {"display": history_display, "data": query_payload})
             if len(st.session_state.history_list) > 10:
@@ -170,7 +174,7 @@ def handle_search():
     st.session_state.input_class_widget = ""
     st.session_state.input_un_widget = ""
 
-# 點擊歷史紀錄回填的 CallBack
+# 點擊歷史紀錄按鈕回填的 CallBack
 def load_history_query(query_payload):
     st.session_state.last_query = query_payload
     st.session_state.search_submitted = True
@@ -284,7 +288,7 @@ else:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
         # -------------------------------------------------------------
-        # 📂 SIMPLIFIED SIDEBAR (移除大計數器，保留乾淨 10 筆歷史)
+        # 📂 SIMPLIFIED SIDEBAR (優化：點擊文字按鈕直接回填)
         # -------------------------------------------------------------
         with st.sidebar:
             st.markdown("### 🔍 Search Intelligence")
@@ -294,11 +298,14 @@ else:
                 st.caption("No recent searches. History is clear.")
             else:
                 for idx, item in enumerate(st.session_state.history_list):
-                    col_hist, col_btn = st.columns([4, 1])
-                    with col_hist:
-                        st.markdown(f"**{idx+1}.** `{item['display']}`")
-                    with col_btn:
-                        st.button("🔄", key=f"recall_{idx}", on_click=load_history_query, args=(item['data'],), help="Click to recall this query")
+                    # 將整行做成按鈕，點擊直接回填搜尋
+                    st.button(
+                        label=f"{idx+1}. {item['display']}", 
+                        key=f"recall_{idx}", 
+                        on_click=load_history_query, 
+                        args=(item['data'],),
+                        use_container_width=True
+                    )
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("🧹 Clear History", use_container_width=True, type="secondary"):
