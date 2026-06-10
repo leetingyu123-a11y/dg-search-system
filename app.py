@@ -40,7 +40,7 @@ excel_sheets = load_carrier_excel(excel_file, excel_time)
 raw_master_df = load_imdg_master(master_file, master_time)
 
 # -------------------------------------------------------------
-# 🎨 CSS STYLING (徹底修復重疊並保持精緻矮版)
+# 🎨 CSS STYLING
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -84,7 +84,6 @@ st.markdown("""
     .stExpander:nth-of-type(1) .streamlit-expanderHeader p { font-size: 16px !important; font-weight: 800 !important; color: #0f172a !important; }
     .stExpander:nth-of-type(2) .streamlit-expanderHeader p { font-size: 14px !important; font-weight: 600 !important; color: #64748b !important; }
 
-    /* 🌟 精緻微型標籤（絕不重疊） */
     .search-label {
         font-size: 13px !important;
         font-weight: 600;
@@ -93,7 +92,6 @@ st.markdown("""
         margin-top: 5px !important;
     }
     
-    /* 精緻矮版輸入框調整 */
     div[data-testid="stTextInput"] input {
         padding: 4px 10px !important;
         height: 36px !important;
@@ -109,16 +107,14 @@ st.markdown("""
         height: 36px !important;
     }
     
-    /* 搜尋按鈕微型化 */
-    div.stButton > button[kind="primary"] {
+    /* 按鈕齊高美化 */
+    div.stButton > button {
         padding: 4px 15px !important;
         height: 36px !important;
         font-size: 14px !important;
-        font-weight: bold !important;
-        margin-top: 10px !important;
+        margin-top: 28px !important;
     }
 
-    /* 歷史紀錄側邊欄按鈕 */
     [data-testid="stSidebar"] .stButton button {
         padding: 2px 8px !important;
         min-height: 24px !important;
@@ -130,6 +126,7 @@ st.markdown("""
         color: #475569 !important;
         border: 1px solid #e2e8f0 !important;
         line-height: 1.2 !important;
+        margin-top: 0px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -137,21 +134,29 @@ st.markdown("""
 st.title("🚢 Carrier DG Prohibited List Query System")
 
 # -------------------------------------------------------------
-# ⏳ SESSION STATE & HISTORY LOGIC
+# ⏳ SESSION STATE & HISTORY LOGIC (修復暫存跳回 Bug)
 # -------------------------------------------------------------
 if "history" not in st.session_state:
     st.session_state.history = []
 if "search_trigger" not in st.session_state:
     st.session_state.search_trigger = False
-if "input_un_value" not in st.session_state:
-    st.session_state.input_un_value = ""
-if "input_class_value" not in st.session_state:
-    st.session_state.input_class_value = ""
+
+# 使用獨立 Key 控制輸入框預設值，避免與手動輸入衝突
+if "widget_class" not in st.session_state:
+    st.session_state.widget_class = ""
+if "widget_un" not in st.session_state:
+    st.session_state.widget_un = ""
 
 def click_history(hist_un, hist_class):
-    st.session_state.input_un_value = hist_un
-    st.session_state.input_class_value = hist_class
+    st.session_state.widget_class = hist_class
+    st.session_state.widget_un = hist_un
     st.session_state.search_trigger = True
+
+def clear_search_inputs():
+    st.session_state.widget_class = ""
+    st.session_state.widget_un = ""
+    st.session_state.search_trigger = False
+    st.rerun()
 
 with st.sidebar:
     st.subheader("⚙️ Settings")
@@ -162,7 +167,7 @@ with st.sidebar:
             for idx, item in enumerate(st.session_state.history):
                 lbl = f"UN{item['un']} [C{item['class']}]" if item['un'] else f"C{item['class']} (Glob)"
                 st.button(lbl, key=f"h_{idx}", on_click=click_history, args=(item['un'], item['class']), use_container_width=True)
-            if st.button("🗑️ Clear All", use_container_width=True):
+            if st.button("🗑️ Clear All History", use_container_width=True):
                 st.session_state.history = []
                 st.rerun()
 
@@ -182,11 +187,7 @@ def is_class_matching(input_cls, target_cls, exact_mode=False):
     i_cls = clean_class_string(input_cls)
     t_cls = clean_class_string(target_cls)
     if t_cls == 'ALL': return True
-    
-    # Class 1 (1.1, 1.2, 1.4 等) 必須完全精準比對，不能只看開頭是 1 就混用
-    if i_cls.startswith('1') or t_cls.startswith('1'):
-        return i_cls == t_cls
-
+    if i_cls.startswith('1') or t_cls.startswith('1'): return i_cls == t_cls
     if exact_mode: return i_cls == t_cls
     if i_cls == t_cls: return True
     if '.' in i_cls and '.' not in t_cls:
@@ -232,32 +233,33 @@ else:
                 un_col = un_cols[0]
                 cls_col = cls_cols[0]
                 psn_col = psn_cols[0] if psn_cols else None
-                
                 master_df['UN Number'] = master_df[un_col].apply(format_un_number)
                 master_df['Class'] = master_df[cls_col].apply(clean_class_string)
                 master_df['PSN_Clean'] = master_df[psn_col].fillna('') if psn_col else "Generic Category Search"
-                
                 sub_risk_col = [c for c in master_df.columns if 'sub' in c.lower() or '次要' in c.lower()]
                 master_df['Detected_SubRisk'] = master_df[sub_risk_col[0]] if sub_risk_col else ""
                 has_master = True
 
-        # 乾淨不重疊的三部曲欄位
-        col1, col2, col3 = st.columns(3)
+        # 五欄配置：讓搜尋按鈕與清除按鈕完美切齊並列
+        col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 1.5, 1])
         with col1:
             st.markdown('<p class="search-label">1. Class / Division</p>', unsafe_allow_html=True)
-            user_input_class = st.text_input("Class", value=st.session_state.input_class_value, placeholder="e.g., 3, 5.1", label_visibility="collapsed").strip()
+            user_input_class = st.text_input("Class", key="widget_class", placeholder="e.g., 3, 5.1", label_visibility="collapsed").strip()
         with col2:
             st.markdown('<p class="search-label">2. UN Number</p>', unsafe_allow_html=True)
-            raw_input_un = st.text_input("UN", value=st.session_state.input_un_value, placeholder="e.g., 1950, 2067", label_visibility="collapsed").strip()
+            raw_input_un = st.text_input("UN", key="widget_un", placeholder="e.g., 1950, 2067", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
         with col3:
             st.markdown('<p class="search-label">3. Carrier Filter</p>', unsafe_allow_html=True)
             selected_partner = st.selectbox("Carrier", ["ALL CARRIERS"] + all_partners, label_visibility="collapsed")
+        with col4:
+            search_pressed = st.button("Search Database", type="primary", use_container_width=True)
+        with col5:
+            st.button("Clear 🧹", on_click=clear_search_inputs, use_container_width=True)
 
-        if st.button("Search Database", type="primary", use_container_width=True) or st.session_state.search_trigger:
-            st.session_state.search_trigger = False
-            st.session_state.input_class_value = user_input_class
-            st.session_state.input_un_value = raw_input_un
+        # 啟動搜尋判定
+        if search_pressed or st.session_state.search_trigger:
+            st.session_state.search_trigger = False # 搜尋發動後立刻切斷連動鏈，允許自由修改
             
             final_class = clean_class_string(user_input_class) if user_input_class else ""
             is_valid_input = True
@@ -292,6 +294,7 @@ else:
                 matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Category Search"})
 
             if is_valid_input and matched_master_records:
+                # 寫入歷史紀錄
                 log = {"un": input_un, "class": final_class}
                 if log not in st.session_state.history:
                     st.session_state.history.insert(0, log)
@@ -400,7 +403,7 @@ else:
                                 if any(k in r_txt for k in ["🟡", "YES", "TRUE"]): is_any_row_remarked = True
 
                         partner_data = {
-                            "sheet_name": sheet,  # 🌟 這裡修正：由 sheet_name 改回正確的變數 sheet
+                            "sheet_name": sheet,
                             "carrier_matched_rows": carrier_matched_rows,
                             "specific_dg_list": specific_dg_list,
                             "collapsed_list": collapsed_list
@@ -460,4 +463,4 @@ else:
         st.error(f"❌ Execution Bug Found. Error details: {e}")
 
 # Footer
-st.markdown('<div class="footer-box">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY<br>Copyright © 2026 IAL DG TEAM. All Rights Reserved.</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer-box">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY<br>Copyright © 2026 IAL DG TEAM. All Rights Reserved <br>Any issue and user feedback plz contact tim.lee@interasialine.com via teams.</div>', unsafe_allow_html=True)
