@@ -5,7 +5,37 @@ import time  # 引入時間模組來處理時間差
 from email.mime.text import MIMEText
 from email.header import Header
 import extra_streamlit_components as stx
+# =======================================================
+# 📌 新增：在線人數追蹤功能（貼在所有 import 的正下方）
+# =======================================================
+class SystemAnalytics:
+    def __init__(self):
+        self.total_clicks = 0
+        self.total_logins = 0
+        self.active_users = {}  # 紀錄 { 使用者名稱或ID: 最後活動時間 }
 
+    def update_activity(self, user_id):
+        """更新使用者的最後活動時間"""
+        self.active_users[user_id] = datetime.datetime.now()
+
+    def get_active_users(self, minutes=10):
+        """篩選並計算指定分鐘內在線的人數"""
+        now = datetime.datetime.now()
+        # 移除超過時間的使用者，只保留設定分鐘內有動作的人
+        self.active_users = {
+            u: t for u, t in self.active_users.items() 
+            if (now - t).total_seconds() < minutes * 60
+        }
+        return len(self.active_users)
+
+# 使用 st.cache_resource 確保所有使用者、所有 Session 都共用同一個追蹤器
+@st.cache_resource
+def get_analytics_tracker():
+    return SystemAnalytics()
+
+# 實例化全域追蹤器
+tracker = get_analytics_tracker()
+# =======================================================
 # ==============================================================================
 # SETTINGS: Dedicated Gmail account for sending emails
 # ==============================================================================
