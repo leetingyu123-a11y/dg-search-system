@@ -1,4 +1,31 @@
 import streamlit as st
+import streamlit.components.v1 as components
+
+# 初始化驗證狀態
+if "intranet_verified" not in st.session_state:
+    st.session_state.intranet_verified = False
+
+# 如果還沒通過驗證，啟動前端偵測
+if not st.session_state.intranet_verified:
+    # 這裡利用瀏覽器試圖讀取內網伺服器上的一張小圖片或小資源（請確保該網址在內網可連）
+    # 如果成功觸發 onload，代表使用者確實身處內網
+    detector_html = """
+    <img src="http://ialtpeapm.wanhai.com/favicon.ico" 
+         onerror="parent.postMessage({status: 'failed'}, '*')" 
+         onload="parent.postMessage({status: 'success'}, '*')" 
+         style="display:none;">
+    <script>
+        window.addEventListener('message', function(e) {
+            if (e.data.status === 'success') {
+                // 這裡可以透過 Streamlit 的實驗性查詢參數或其他方式回傳，
+                // 但最穩妥的是提示同仁點擊確認放行
+            }
+        });
+    </script>
+    """
+    
+    # 簡化版：直接在畫面上放一個按鈕，按了之後去戳內網，戳失敗就顯示錯誤
+    # 考慮到公司網路複雜度，最穩妥的依然是我們上一階段寫的「公司對外公網 IP (123.51.189.110)」比對法。import streamlit as st
 import pandas as pd
 # ... 你原本長串代碼自帶的其他 import 請保留 ...
 
