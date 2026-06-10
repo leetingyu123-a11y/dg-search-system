@@ -1,41 +1,47 @@
-# ==========================================================
-# 1. 你原本檔案最上方的 import 區塊（維持原樣不用動）
-# ==========================================================
-import streamlit as st
-import pandas as pd
-# ... 你原本帶有的其他所有 import 庫 ...
-
-
-# ==========================================================
-# 2. 核心外掛：直接把這段貼在 import 下方、 st.set_page_config 之前
-# ==========================================================
-ALLOWED_IPS = ["123.51.189.110", "127.0.0.1"]
-
 def get_client_ip():
+    """
+    """
     try:
         headers = st.context.headers
+        
         if "X-Forwarded-For" in headers:
-            return headers["X-Forwarded-For"].split(",")[0].strip()
+            # 這時候 ip_chain 可能長這樣: ['192.168.1.167', '123.51.189.110']
+            ip_chain = [ip.strip() for ip in headers["X-Forwarded-For"].split(",")]
+            
+            for ip in ip_chain:
+                # 1. 跳過本機測試 IP
+                if ip.startswith("127.") or ip == "localhost":
+                    continue
+                # 2. 跳過常見的公司內網/虛擬網段 (192.168.x.x 與 10.x.x.x)
+                if ip.startswith("192.168.") or ip.startswith("10."):
+                    continue
+                # 3. 跳過 B 類內網網段 (172.16.x.x ~ 172.31.x.x)
+                if ip.startswith("172."):
+                    try:
+                        parts = ip.split('.')
+                        if 16 <= int(parts[1]) <= 31:
+                            continue
+                    except Exception:
+                        pass
+                
+                # 只要不是內網 IP，這就是你真正的對外公網 IP (例如 123.51.189.110)
+                return ip
+            
+            # 如果整條鏈路都是內網 IP（通常不可能），才保底回傳第一個
+            return ip_chain[0]
+            
         if "X-Real-Ip" in headers:
             return headers["X-Real-Ip"].strip()
+            
     except Exception:
         pass
     return None
 
-current_user_ip = get_client_ip()
-
-if current_user_ip not in ALLOWED_IPS:
-    st.error("🔒 安全存取限制：您的 IP 位址未獲授權，無法檢視此系統。")
-    if current_user_ip:
-        st.caption(f"您的連線 IP 節點為: {current_user_ip}")
-    st.stop()  # 🛑 關鍵防線：IP 不對的人在這裡就會被完全攔截，後面的長代碼連跑都不會跑
-
 
 # ==========================================================
-# 3. 這裡以下，完全接回你原本那一長串的程式碼（一字不改）
+# 3. 這裡以下，完全接回
 # ==========================================================
-# 例如你原本的 st.set_page_config(page_title="船東危險品...", layout="wide")
-# 以及後續所有的 Excel 載入、Session State 暫存、自訂的 CSS 標記樣式與查詢主邏輯...
+
 import streamlit as st
 import pandas as pd
 import os
