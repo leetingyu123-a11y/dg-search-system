@@ -131,6 +131,38 @@ st.markdown("""
 
 st.title("🚢 Carrier DG Prohibited List Query System")
 
+# -------------------------------------------------------------
+# 🔄 處理「搜尋後輸入框自動清空」的核心機制
+# -------------------------------------------------------------
+if "search_submitted" not in st.session_state:
+    st.session_state.search_submitted = False
+if "last_query" not in st.session_state:
+    st.session_state.last_query = None
+
+# 當按下搜尋按鈕時触发的 CallBack
+def handle_search():
+    # 先把當前輸入框的值撈出來存入暫存區
+    cls_val = st.session_state.input_class_widget.strip()
+    un_val = st.session_state.input_un_widget.strip()
+    carrier_val = st.session_state.input_carrier_widget
+    
+    if cls_val or un_val:
+        st.session_state.last_query = {
+            "class": cls_val,
+            "un": un_val,
+            "carrier": carrier_val
+        }
+        st.session_state.search_submitted = True
+    else:
+        st.session_state.search_submitted = False
+        st.session_state.last_query = None
+
+    # 清空輸入框的 Widget State
+    st.session_state.input_class_widget = ""
+    st.session_state.input_un_widget = ""
+
+# -------------------------------------------------------------
+
 def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
@@ -143,10 +175,6 @@ def clean_class_string(class_val):
     return match.group(0) if match else val_str
 
 def is_class_matching(input_cls, target_cls, exact_mode=False):
-    """
-    匹配 Class 邏輯。
-    exact_mode=True 用於全域通則中，當船東指明特定 Class (如 1.1) 時，不應該被 1.4 模糊匹配到。
-    """
     if not input_cls or not target_cls:
         return False
     input_cls = clean_class_string(input_cls)
@@ -155,7 +183,6 @@ def is_class_matching(input_cls, target_cls, exact_mode=False):
     if target_cls == 'ALL':
         return True
         
-    # 如果是精準模式，不允許 Class 1 的大類模糊匹配
     if exact_mode:
         return input_cls == target_cls
 
@@ -244,24 +271,34 @@ else:
             except Exception as e:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
-        # Interface Layout
+        # Interface Layout (輸入框預設永遠是空白)
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("### 1. Enter Class / Division")
-            user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", label_visibility="collapsed").strip()
+            user_input_class = st.text_input("Class Input", placeholder="e.g., 1, 2.3, 3", key="input_class_widget", label_visibility="collapsed")
         with col2:
             st.markdown("### 2. Enter UN Number")
-            raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", label_visibility="collapsed").strip()
-            input_un = format_un_number(raw_input_un) if raw_input_un else ""
-            if input_un == 'ALL': 
-                input_un = ""
+            raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", key="input_un_widget", label_visibility="collapsed")
         with col3:
             st.markdown("### 3. Filter by Carrier")
             partner_options = ["ALL CARRIERS"] + all_partners
-            selected_partner = st.selectbox("Partner Filter", partner_options, label_visibility="collapsed")
+            selected_partner = st.selectbox("Partner Filter", partner_options, key="input_carrier_widget", label_visibility="collapsed")
 
-        if st.button("Search Database", type="primary", use_container_width=True):
-            final_class = clean_class_string(user_input_class) if user_input_class else ""
+        # 點擊按鈕直接觸發 handle_search 清空輸入框
+        st.button("Search Database", type="primary", use_container_width=True, on_click=handle_search)
+
+        # -------------------------------------------------------------
+        # 📊 執行搜尋與渲染邏輯 (從暫存區讀取上一次提交的資料)
+        # -------------------------------------------------------------
+        if st.session_state.search_submitted and st.session_state.last_query is not None:
+            query_data = st.session_state.last_query
+            
+            final_class = clean_class_string(query_data["class"]) if query_data["class"] else ""
+            input_un = format_un_number(query_data["un"]) if query_data["un"] else ""
+            if input_un == 'ALL': 
+                input_un = ""
+            selected_partner = query_data["carrier"]
+            
             is_valid_input = True
             matched_master_records = []
             
@@ -338,6 +375,11 @@ else:
                     
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
+                    # 建立三個獨立的桶子用來裝不同燈號的結果
+                    green_bucket = []
+                    yellow_bucket = []
+                    red_bucket = []
+                    
                     for sheet_name in search_targets:
                         df = excel_sheets[sheet_name].copy()
                         df.columns = df.columns.astype(str).str.strip()
@@ -364,7 +406,6 @@ else:
                         df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip().apply(clean_class_string) if 'SubRisk' in col_mapping else ""
 
                         carrier_matched_rows = []
-                        
                         specific_dg_list = []  
                         collapsed_list = []    
 
@@ -382,7 +423,6 @@ else:
                                         continue
                                 carrier_matched_rows.append(row)
                                 
-                                # 🌟 優化：HasRemark 如果填的是純 "YES"、"TRUE" 這種無意義導向字眼，不加入備註呈現
                                 if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
                                     hr_val = str(row[col_mapping['HasRemark']]).strip()
                                     if hr_val and hr_val.lower() != 'nan' and hr_val.upper() not in ["YES", "TRUE"] and hr_val not in [c["text"] for c in specific_dg_list]:
@@ -398,14 +438,10 @@ else:
 
                         # 2. Check Global Policy Rules
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
-                        
                         universal_counter = 1
                         
                         for _, g_row in global_lines.iterrows():
                             carrier_restricted_cls = g_row['Clean_Class']
-                            
-                            # 🎯 核心修正漏洞：如果全域通則有寫特定 Class (如 1.1)，此處開啟 exact_mode=True 精準匹配
-                            # 避免被 1.4 查到別的大類的限制！
                             is_exact = True if (carrier_restricted_cls and carrier_restricted_cls != 'ALL') else False
                             main_class_hit = is_class_matching(current_class, carrier_restricted_cls, exact_mode=is_exact)
                             
@@ -450,58 +486,64 @@ else:
                                 if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
                                     is_any_row_remarked = True
 
-                        # --- Card Rendering Section ---
+                        # 打包該船東的渲染資料
                         un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
-                        
+                        carrier_payload = {
+                            "sheet_name": sheet_name,
+                            "un_display": un_display,
+                            "specific_dg_list": specific_dg_list,
+                            "collapsed_list": collapsed_list,
+                            "carrier_matched_rows": carrier_matched_rows
+                        }
+
+                        # 根據核心規則，將資料分流到各自的燈號桶子裡
                         if is_any_row_prohibited:
-                            border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
-                            display_status = "🔴 Strictly Prohibited"
+                            carrier_payload.update({"border_color": "#ef4444", "bg_badge": "#fee2e2", "text_badge": "#991b1b", "display_status": "🔴 Strictly Prohibited"})
+                            red_bucket.append(carrier_payload)
                         elif is_any_row_remarked or specific_dg_list:
-                            # 🌟 防呆：只要有撈到任何特定特定備註限制，自動升級為黃燈提示
-                            border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
-                            display_status = "🟡 Conditional Acceptance / Review Remarks"
+                            carrier_payload.update({"border_color": "#f59e0b", "bg_badge": "#fef3c7", "text_badge": "#92400e", "display_status": "🟡 Conditional Acceptance / Review Remarks"})
+                            yellow_bucket.append(carrier_payload)
                         else:
-                            border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
-                            display_status = "🟢 Standard Acceptance"
+                            carrier_payload.update({"border_color": "#10b981", "bg_badge": "#d1fae5", "text_badge": "#065f46", "display_status": "🟢 Standard Acceptance"})
+                            green_bucket.append(carrier_payload)
 
-                        st.markdown(f"""
-                            <div class="partner-card" style="border-left-color: {border_color}; margin-bottom: 5px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
-                                    <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
+                    # 🌟 核心修改：依序從 綠燈 -> 黃燈 -> 紅燈 進行畫面渲染
+                    for target_bucket in [green_bucket, yellow_bucket, red_bucket]:
+                        for item in target_bucket:
+                            st.markdown(f"""
+                                <div class="partner-card" style="border-left-color: {item['border_color']}; margin-bottom: 5px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span class="partner-title">🏢 Carrier: {item['sheet_name']} (Ref: {item['un_display']})</span>
+                                        <span class="status-badge" style="background-color: {item['bg_badge']}; color: {item['text_badge']};">{item['display_status']}</span>
+                                    </div>
                                 </div>
-                            </div>
-                        """, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)
 
-                        if not carrier_matched_rows and not specific_dg_list:
-                            st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
-                        else:
-                            # 📂 摺疊 1：專屬特定 DG 項目 / 針對大類類別的政策
-                            if specific_dg_list:
-                                specific_label = f"📋 View Specific DG Remarks ({len(specific_dg_list)} Items)"
-                                with st.expander(specific_label, expanded=False):
-                                    specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in specific_dg_list])
-                                    st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
-                            
-                            # 📂 摺疊 2：通用通則
-                            if collapsed_list:
-                                expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
-                                with st.expander(expander_label, expanded=False):
-                                    collapsed_html = ""
-                                    for idx, rem in enumerate(collapsed_list):
-                                        if idx == 0:
-                                            header_label = f"Universal DG Policy {rem['num']}."
-                                        else:
-                                            header_label = f"{rem['num']}."
-                                        collapsed_html += f'<div class="collapsed-header">📌 {header_label}</div><div class="remark-line">{rem["text"]}</div>'
+                            if not item['carrier_matched_rows'] and not item['specific_dg_list']:
+                                st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
+                            else:
+                                # 📂 摺疊 1：專屬特定 DG 項目
+                                if item['specific_dg_list']:
+                                    specific_label = f"📋 View Specific DG Remarks ({len(item['specific_dg_list'])} Items)"
+                                    with st.expander(specific_label, expanded=False):
+                                        specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in item['specific_dg_list']])
+                                        st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
+                                
+                                # 📂 摺疊 2：通用通則
+                                if item['collapsed_list']:
+                                    expander_label = f"📄 View Global / Universal DG Policies ({len(item['collapsed_list'])} Items)"
+                                    with st.expander(expander_label, expanded=False):
+                                        collapsed_html = ""
+                                        for idx, rem in enumerate(item['collapsed_list']):
+                                            header_label = f"Universal DG Policy {rem['num']}." if idx == 0 else f"{rem['num']}."
+                                            collapsed_html += f'<div class="collapsed-header">📌 {header_label}</div><div class="remark-line">{rem["text"]}</div>'
+                                        st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
                                         
-                                    st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
-                                    
-                            if not specific_dg_list and not collapsed_list:
-                                st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
-                                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("<br><br>", unsafe_allow_html=True)
+                                if not item['specific_dg_list'] and not item['collapsed_list']:
+                                    st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
+                                        
+                            st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("<br><br>", unsafe_allow_html=True)
                             
     except Exception as e:
         st.error(f"❌ File reading failed. Error message: {e}")
