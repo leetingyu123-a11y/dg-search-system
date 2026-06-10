@@ -477,5 +477,5 @@ else:
     except Exception as e:
         st.error(f"❌ Execution Bug Found. Error details: {e}")
 
-# Footer (包含高亮信箱)
-st.markdown('<div class="footer-box">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY<br>Copyright © 2026 IAL DG TEAM. All Rights Reserved <br>Any issue and user feedback plz contact <span style="background-color: #fef08a; color: #1e293b; padding: 2px 6px; border-radius: 4px; font-weight: bold;">tim.lee@interasialine.com</span> via teams.</div>', unsafe_allow_html=True)
+# Footer (信箱字體直接變色版)
+st.markdown('<div class="footer-box">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY<br>Copyright © 2026 IAL DG TEAM. All Rights Reserved <br>Any issue and user feedback plz contact <span style="color: #0284c7; font-weight: bold;">tim.lee@interasialine.com</span> via teams.</div>', unsafe_allow_html=True)
