@@ -1,10 +1,48 @@
 import streamlit as st
+import datetime  # ✅ Added to fix the NameError
 import random
 import smtplib
 import time  # 引入時間模組來處理時間差
 from email.mime.text import MIMEText
 from email.header import Header
 import extra_streamlit_components as stx
+
+# ==============================================================================
+# 📊 NEW MODULE: Real-Time Online Users Tracker (English Version)
+# ==============================================================================
+class SystemAnalytics:
+    def __init__(self):
+        self.total_clicks = 0
+        self.total_logins = 0
+        self.active_users = {}  # Stores { user_identity: last_activity_timestamp }
+
+    def update_activity(self, user_id):
+        """Update the last active timestamp for a user"""
+        self.active_users[user_id] = datetime.datetime.now()
+
+    def get_active_users(self, minutes=10):
+        """Filter and return the number of active users within the timeframe"""
+        now = datetime.datetime.now()
+        # Keep only users who interacted within the last X minutes
+        self.active_users = {
+            u: t for u, t in self.active_users.items() 
+            if (now - t).total_seconds() < minutes * 60
+        }
+        return len(self.active_users)
+
+# Use st.cache_resource to share this tracker across all sessions/users globally
+@st.cache_resource
+def get_analytics_tracker():
+    return SystemAnalytics()
+
+tracker = get_analytics_tracker()
+
+# Track the current user's activity on every rerun
+current_user = st.session_state.get('user_email', '').strip()
+if not current_user:
+    current_user = 'Guest'
+tracker.update_activity(current_user)
+# ==============================================================================
 
 # ==============================================================================
 # SETTINGS: Dedicated Gmail account for sending emails
@@ -144,6 +182,9 @@ if not st.session_state.authenticated:
 # ==============================================================================
 # Your core "Carrier DG Restriction Query System" code resumes below...
 # ==============================================================================
+# ✅ Display real-time active users metric in English in the sidebar
+st.sidebar.metric("📊 Active Users", f"{tracker.get_active_users(minutes=10)} online")
+
 st.sidebar.info(f"👤 Logged in as: {st.session_state.user_email}")
 
 if st.sidebar.button("Log Out 🔒"):
