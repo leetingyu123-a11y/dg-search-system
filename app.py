@@ -1,39 +1,47 @@
 import streamlit as st
 import random
 import smtplib
+import time  # 引入時間模組來處理時間差
 from email.mime.text import MIMEText
 from email.header import Header
-import extra_streamlit_components as stx  # Cookie manager
+import extra_streamlit_components as stx
 
 # ==============================================================================
 # SETTINGS: Dedicated Gmail account for sending emails
 # ==============================================================================
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
-SENDER_EMAIL = "timbot000001@gmail.com"     # 請輸入你的發信 Gmail
-SENDER_PASSWORD = "kooh dutv dggo ecfm"          # 請輸入你的 16 位元應用程式密碼
+SENDER_EMAIL = "timbot000001@gmail.com"
+SENDER_PASSWORD = "kooh dutv dggo ecfm"
 
 # ==============================================================================
-# CORE MODULE: Iframe-Safe Cookie Verification (24-Hour Expiration - PERFECT VERSION)
+# CORE MODULE: Async-Safe Cookie Verification (F5 & Original URL Proof)
 # ==============================================================================
 
-# 1. 初始化 Cookie 管理器（指定固定 key 避免重頭載入衝突）
-cookie_manager = stx.CookieManager(key="auth_cookie_manager")
+# 1. 初始化 Cookie 管理器
+cookie_manager = stx.CookieManager(key="secure_auth_manager")
 
-# 2. 從瀏覽器嘗試讀取 Cookie
-auth_cookie = cookie_manager.get(cookie="sys_auth_verified")
-saved_email = cookie_manager.get(cookie="sys_auth_email")
+# ⏳ 核心修正：解決 F5 時間差！
+# 當網頁重新整理時，給瀏覽器 0.5 秒的緩衝時間把 Cookie 丟回給 Python
+if "cookie_initialized" not in st.session_state:
+    with st.spinner("🔒 Securing connection..."):
+        time.sleep(0.5)  # 關鍵等待：讓 JavaScript 與 Python 同步
+        st.session_state.cookie_initialized = True
+        st.rerun()       # 重新執行，這時 Python 就能百分之百讀到 Cookie 了
 
-# 3. 檢查驗證狀態
-if auth_cookie == "true":
+# 2. 安全地從瀏覽器讀取 Cookie（此時絕對讀得到）
+auth_cookie = cookie_manager.get(cookie="company_dg_auth")
+saved_email = cookie_manager.get(cookie="company_dg_email")
+
+# 3. 驗證狀態判定
+if auth_cookie == "authenticated_success" and saved_email:
     st.session_state.authenticated = True
-    if saved_email:
-        st.session_state.user_email = saved_email
+    st.session_state.user_email = saved_email
 else:
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
-# 初始化其他必要的 Session 變數
+# 初始化其他 Session 變數
 if "otp_sent" not in st.session_state:
     st.session_state.otp_sent = False
 if "real_otp" not in st.session_state:
@@ -47,14 +55,12 @@ def send_otp_email(to_email, otp_code):
         f"Dear Colleague,\n\n"
         f"You are attempting to log in to the Carrier DG Restriction Query System.\n"
         f"Your security verification code is: 【 {otp_code} 】\n\n"
-        f"Please enter this code on the webpage to complete your identity verification.\n\n"
-        f"Security Notice: Please do not share this verification code with external personnel."
+        f"Please enter this code on the webpage to complete your identity verification."
     )
-    
     msg = MIMEText(mail_content, 'plain', 'utf-8')
     msg['From'] = Header(f"DG System Auto-Mail <{SENDER_EMAIL}>", 'utf-8')
     msg['To'] = Header(to_email, 'utf-8')
-    msg['Subject'] = Header("[Security Verification] Carrier DG Restriction Query System - OTP Code", 'utf-8')
+    msg['Subject'] = Header("[Security Verification] DG Query System - OTP Code", 'utf-8')
     
     try:
         server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
@@ -63,15 +69,14 @@ def send_otp_email(to_email, otp_code):
         server.quit()
         return True
     except Exception as e:
-        st.error(f"Failed to send email. Please check SMTP settings. Error: {e}")
+        st.error(f"Failed to send email. Error: {e}")
         return False
 
 # --- UI 身分驗證介面 ---
 if not st.session_state.authenticated:
     st.title("🔒 Employee Security Verification")
-    st.write("This system contains internal sensitive data. Please verify your identity using your company email first.")
+    st.write("This system contains internal sensitive data. Please verify your identity first.")
     
-    # 步驟一：輸入信箱並發送驗證碼
     email_input = st.text_input(
         "Company Email Address:", 
         value=st.session_state.user_email,
@@ -82,23 +87,20 @@ if not st.session_state.authenticated:
     if not st.session_state.otp_sent:
         if st.button("Send Verification Code", type="primary"):
             clean_email = email_input.strip().lower()
-            
-            # 🔒 網域安全控管
             ALLOWED_DOMAINS = ("@interasialine.com",)
             
             if not clean_email.endswith(ALLOWED_DOMAINS):
-                st.error("❌ Access Denied: This system is restricted to company emails ending with @interasialine.com.")
+                st.error("❌ Access Denied: This system is restricted to company emails.")
             else:
                 generated_otp = str(random.randint(100000, 999999))
-                with st.spinner("Sending verification code to your email..."):
+                with st.spinner("Sending verification code..."):
                     if send_otp_email(clean_email, generated_otp):
                         st.session_state.otp_sent = True
                         st.session_state.real_otp = generated_otp
                         st.session_state.user_email = clean_email
-                        st.success(f"✅ Verification code sent successfully to {clean_email}. Please check your inbox.")
+                        st.success(f"✅ Verification code sent to {clean_email}.")
                         st.rerun()
     
-    # 步驟二：輸入收到的驗證碼
     else:
         st.info(f"Verification code sent to: {st.session_state.user_email}")
         otp_input = st.text_input("Enter the 6-digit verification code:", type="default", max_chars=6)
@@ -109,22 +111,22 @@ if not st.session_state.authenticated:
                 if otp_input.strip() == st.session_state.real_otp:
                     st.session_state.authenticated = True
                     
-                    # 🍪 核心修正：強迫設定為 same_site="none" 並開啟 secure=True，繞過瀏覽器對 iframe 的封鎖
-                    # 必須個別給予獨立的 key 參數，避免 Streamlit 報錯 Duplicate Widget ID
+                    # 🍪 寫入 Cookie 到同仁的瀏覽器中（設定有效期限 24 小時 = 86400 秒）
+                    # 加上 same_site="none" 和 secure=True 確保在任何部署環境下都不會被封鎖
                     cookie_manager.set(
-                        "sys_auth_verified", 
-                        "true", 
-                        key="set_status_cookie", 
-                        max_age=86400, 
-                        same_site="none", 
+                        "company_dg_auth", 
+                        "authenticated_success", 
+                        key="write_auth_cookie", 
+                        max_age=86400,
+                        same_site="none",
                         secure=True
                     )
                     cookie_manager.set(
-                        "sys_auth_email", 
+                        "company_dg_email", 
                         st.session_state.user_email, 
-                        key="set_email_cookie", 
-                        max_age=86400, 
-                        same_site="none", 
+                        key="write_email_cookie", 
+                        max_age=86400,
+                        same_site="none",
                         secure=True
                     )
                     
@@ -133,18 +135,24 @@ if not st.session_state.authenticated:
                 else:
                     st.error("❌ Invalid verification code. Please try again.")
         with col2:
-            if st.button("Back / Change Email"):
+            if st.button("Back"):
                 st.session_state.otp_sent = False
                 st.session_state.real_otp = None
                 st.rerun()
-                
-        st.caption("💡 Didn't receive the email? Check your spam folder or click 'Back / Change Email' to resend.")
     st.stop()
 
 # ==============================================================================
 # Your core "Carrier DG Restriction Query System" code resumes below...
 # ==============================================================================
 st.sidebar.info(f"👤 Logged in as: {st.session_state.user_email}")
+
+if st.sidebar.button("Log Out 🔒"):
+    # 登出時徹底清除 Cookie 與狀態
+    cookie_manager.delete("company_dg_auth", key="delete_auth_cookie")
+    cookie_manager.delete("company_dg_email", key="delete_email_cookie")
+    st.session_state.authenticated = False
+    st.session_state.cookie_initialized = False
+    st.rerun()
 # ==============================================================================
 # 3. 這裡以下，完全接回你原本那一長串的「船東危險品禁裝清單查詢系統」程式碼
 # ==============================================================================
