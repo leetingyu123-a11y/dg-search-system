@@ -3,50 +3,73 @@ import random
 import smtplib
 import time
 import secrets
+import json
+import os
 from email.mime.text import MIMEText
 from email.header import Header
+from streamlit_local_storage import LocalStorage  # 引入在地儲存套件
 
 # ==============================================================================
 # SETTINGS: Dedicated Gmail account for sending emails
 # ==============================================================================
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
-SENDER_EMAIL = "timbot000001@gmail.com"     # Enter your sending Gmail
-SENDER_PASSWORD = "kooh dutv dggo ecfm"          # Enter your 16-digit App Password
+SENDER_EMAIL = "your_gmail_account@gmail.com"     # 請輸入你的發信 Gmail
+SENDER_PASSWORD = "xxxx xxxx xxxx xxxx"          # 請輸入你的 16 位元應用程式密碼
 
 # ==============================================================================
-# CORE MODULE: URL Token-Based Verification (24-Hour Expiration - 100% Reliable)
+# CORE MODULE: Persistent LocalStorage Auth (24-Hour Expiration - Perfect Version)
 # ==============================================================================
 
-# 1. Create a shared memory in the cloud server to store 24-hour active tokens
-@st.cache_resource
-def get_global_token_db():
-    return {}  # Format: { "random_token_str": {"email": "...", "expires_at": timestamp} }
+# 1. 初始化 LocalStorage 元件
+local_storage = LocalStorage()
 
-token_db = get_global_token_db()
+# 2. 權杖檔案資料庫（讓驗證紀錄在雲端伺服器上安全存活）
+TOKEN_FILE = "active_tokens.json"
 
-# 2. Automatically clean up expired tokens to save memory
+def load_token_db():
+    if os.path.exists(TOKEN_FILE):
+        try:
+            with open(TOKEN_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_token_db(db):
+    try:
+        with open(TOKEN_FILE, "w") as f:
+            json.dump(db, f)
+    except:
+        pass
+
+# 讀取當前伺服器中所有有效的通行證
+token_db = load_token_db()
 current_timestamp = time.time()
+
+# 自動清理過期的 24 小時通行證
+db_changed = False
 expired_tokens = [t for t, data in token_db.items() if current_timestamp > data["expires_at"]]
 for t in expired_tokens:
     del token_db[t]
+    db_changed = True
+if db_changed:
+    save_token_db(token_db)
 
-# 3. Check if a valid Fast-Pass Token exists in the current URL
-if "token" in st.query_params:
-    url_token = st.query_params["token"]
-    if url_token in token_db:
-        # Check if the token is still valid within 24 hours
-        if current_timestamp <= token_db[url_token]["expires_at"]:
-            st.session_state.authenticated = True
-            st.session_state.user_email = token_db[url_token]["email"]
-        else:
-            # Token expired
-            st.toast("⚠️ Your 24-hour fast pass has expired. Please re-verify.", icon="⏳")
-            st.query_params.clear()
+# 3. 核心自動登入邏輯：去瀏覽器的「隱形置物櫃」拿 Token
+# 提示：Streamlit 元件載入是非同步的，網頁剛開的千分之一秒會是 None，隨後抓到值會自動、無感地重新整理進系統
+stored_token = local_storage.getItem("sys_fast_pass_token")
 
-# Initialize session state variables if not present
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+
+# 如果瀏覽器置物櫃有 Token，且伺服器也對得到、沒過期 -> 直接判定登入成功！
+if stored_token and stored_token in token_db:
+    if current_timestamp <= token_db[stored_token]["expires_at"]:
+        st.session_state.authenticated = True
+        st.session_state.user_email = token_db[stored_token]["email"]
+
+# 初始化其他必要的 Session 變數
 if "otp_sent" not in st.session_state:
     st.session_state.otp_sent = False
 if "real_otp" not in st.session_state:
@@ -55,7 +78,7 @@ if "user_email" not in st.session_state:
     st.session_state.user_email = ""
 
 def send_otp_email(to_email, otp_code):
-    """ Sends the security verification code via Gmail SMTP """
+    """ 發送安全驗證碼郵件 """
     mail_content = (
         f"Dear Colleague,\n\n"
         f"You are attempting to log in to the Carrier DG Restriction Query System.\n"
@@ -79,12 +102,12 @@ def send_otp_email(to_email, otp_code):
         st.error(f"Failed to send email. Please check SMTP settings. Error: {e}")
         return False
 
-# --- UI Verification Interface ---
+# --- UI 身分驗證介面 ---
 if not st.session_state.authenticated:
     st.title("🔒 Employee Security Verification")
     st.write("This system contains internal sensitive data. Please verify your identity using your company email first.")
     
-    # Step 1: Input Email & Send OTP
+    # 步驟一：輸入信箱並發送驗證碼
     email_input = st.text_input(
         "Company Email Address:", 
         value=st.session_state.user_email,
@@ -96,7 +119,7 @@ if not st.session_state.authenticated:
         if st.button("Send Verification Code", type="primary"):
             clean_email = email_input.strip().lower()
             
-            # 🔒 Access Control
+            # 🔒 網域安全控管
             ALLOWED_DOMAINS = ("@interasialine.com",)
             
             if not clean_email.endswith(ALLOWED_DOMAINS):
@@ -111,7 +134,7 @@ if not st.session_state.authenticated:
                         st.success(f"✅ Verification code sent successfully to {clean_email}. Please check your inbox.")
                         st.rerun()
     
-    # Step 2: Input Received OTP
+    # 步驟二：輸入收到的驗證碼
     else:
         st.info(f"Verification code sent to: {st.session_state.user_email}")
         otp_input = st.text_input("Enter the 6-digit verification code:", type="default", max_chars=6)
@@ -122,15 +145,19 @@ if not st.session_state.authenticated:
                 if otp_input.strip() == st.session_state.real_otp:
                     st.session_state.authenticated = True
                     
-                    # 🔑 Generate a secure 24-hour token and register it in the server memory
+                    # 🔑 產生一把安全的 24 小時隨機通行權杖
                     fast_pass_token = secrets.token_hex(12)
+                    
+                    # 重新讀取並將權杖寫入雲端檔案資料庫
+                    token_db = load_token_db()
                     token_db[fast_pass_token] = {
                         "email": st.session_state.user_email,
-                        "expires_at": time.time() + 86400  # Valid for exactly 24 hours
+                        "expires_at": time.time() + 86400  # 精準維持 24 小時有效
                     }
+                    save_token_db(token_db)
                     
-                    # 🌐 Inject the token into the browser URL bar
-                    st.query_params["token"] = fast_pass_token
+                    # 💾 重點：把權杖塞進同仁瀏覽器的 LocalStorage 置物櫃中
+                    local_storage.setItem("sys_fast_pass_token", fast_pass_token)
                     
                     st.success("🔓 Verification successful! Logging in...")
                     st.rerun()
