@@ -1,4 +1,124 @@
 import streamlit as st
+import random
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
+
+# ==============================================================================
+# 設定區：發信專用的 Gmail 資訊 (請替換成您的專屬資料)
+# ==============================================================================
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 465
+SENDER_EMAIL = "timbot000001@gmail.com"        # 填入發信用的 Gmail
+SENDER_PASSWORD = "kooh dutv dggo ecfm"     # 填入 16 位元的「應用程式密碼」
+
+# ==============================================================================
+# 核心外掛：公司信箱動態驗證碼 (OTP) 防禦機制 - Session 認證版
+# ==============================================================================
+
+# 初始化所有需要的 Session 狀態 (認分頁，維持當天不重複驗證)
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "otp_sent" not in st.session_state:
+    st.session_state.otp_sent = False
+if "real_otp" not in st.session_state:
+    st.session_state.real_otp = None
+if "user_email" not in st.session_state:
+    st.session_state.user_email = ""
+
+def send_otp_email(to_email, otp_code):
+    """ 透過 Gmail SMTP 自動寄送驗證碼 """
+    mail_content = (
+        f"您好：\n\n"
+        f"您正在嘗試登入船東危險品查詢系統。\n"
+        f"您的安全驗證碼為：【 {otp_code} 】\n\n"
+        f"請於網頁中輸入此驗證碼完成身分確認。驗證碼於瀏覽器分頁關閉前有效。\n"
+        f"資安提醒：請勿將此驗證碼提供給外部人員。"
+    )
+    
+    msg = MIMEText(mail_content, 'plain', 'utf-8')
+    msg['From'] = Header(f"危險品系統自動發信 <{SENDER_EMAIL}>", 'utf-8')
+    msg['To'] = Header(to_email, 'utf-8')
+    msg['Subject'] = Header("【安全驗證】船東危險品查詢系統 - 動態登入驗證碼", 'utf-8')
+    
+    try:
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.sendmail(SENDER_EMAIL, [to_email], msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"郵件發送失敗，請檢查 SMTP 設定或稍後再試。錯誤訊息: {e}")
+        return False
+
+# --- UI 驗證介面呈現 ---
+if not st.session_state.authenticated:
+    st.title("🔒 同仁安全身份驗證")
+    st.write("本系統含有內部敏感資料，請先使用公司電子郵件進行身份驗證。")
+    
+    # 步驟 1：輸入信箱並發送驗證碼
+    email_input = st.text_input(
+        "請輸入您的公司電子郵件信箱：", 
+        value=st.session_state.user_email,
+        placeholder="example@interasialine.com",
+        disabled=st.session_state.otp_sent # 發送後鎖定輸入框，防止收信中途竄改
+    )
+    
+    if not st.session_state.otp_sent:
+        if st.button("發送動態驗證碼", type="primary"):
+            clean_email = email_input.strip().lower()
+            
+            # 🔒 嚴格資安管制：僅限指定信箱網域才能通過
+            ALLOWED_DOMAINS = ("@interasialine.com",)
+            
+            if not clean_email.endswith(ALLOWED_DOMAINS):
+                st.error("❌ 存取拒絕：本系統僅限使用 @interasialine.com 結尾的公司信箱驗證登入。")
+            else:
+                # 生成 6 位數隨機驗證碼
+                generated_otp = str(random.randint(100000, 999999))
+                
+                with st.spinner("正在發送驗證碼至您的公司信箱..."):
+                    if send_otp_email(clean_email, generated_otp):
+                        st.session_state.otp_sent = True
+                        st.session_state.real_otp = generated_otp
+                        st.session_state.user_email = clean_email
+                        st.success(f"✅ 驗證碼已成功寄送至 {clean_email}，請至信箱收信。")
+                        st.rerun()
+    
+    # 步驟 2：輸入收到的驗證碼
+    else:
+        st.info(f"驗證碼已寄送至：{st.session_state.user_email}")
+        otp_input = st.text_input("請輸入信箱收到的 6 位數驗證碼：", type="default", max_chars=6)
+        
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("確認驗證", type="primary"):
+                if otp_input.strip() == st.session_state.real_otp:
+                    st.session_state.authenticated = True
+                    st.success("🔓 驗證成功！正在登入系統...")
+                    st.rerun()
+                else:
+                    st.error("❌ 驗證碼錯誤，請重新確認。")
+        with col2:
+            if st.button("返回修改信箱"):
+                # 重設狀態讓同仁能重新輸入
+                st.session_state.otp_sent = False
+                st.session_state.real_otp = None
+                st.rerun()
+                
+        st.caption("💡 沒收到信？請檢查垃圾信箱，或點擊「返回修改信箱」重新發送。")
+        
+    st.stop() # 🛑 關鍵攔截點：未通過驗證者，下方的所有核心 Excel 資料與查詢網頁完全不加載
+
+# ==============================================================================
+# 3. 這裡以下，完全接回你原本那一長串的「船東危險品禁裝清單查詢系統」程式碼
+# ==============================================================================
+# 例如：st.set_page_config(...) 
+# 讀取 Excel 檔案、IMDG 主資料庫以及你原本寫的所有功能...
+
+# 側邊欄加上登入者提示
+st.sidebar.info(f"👤 當前登入：{st.session_state.user_email}")
+import streamlit as st
 import pandas as pd
 import os
 import re
