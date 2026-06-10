@@ -10,8 +10,8 @@ import extra_streamlit_components as stx  # Cookie manager
 # ==============================================================================
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
-SENDER_EMAIL = "your_gmail_account@gmail.com"     # 請輸入你的發信 Gmail
-SENDER_PASSWORD = "xxxx xxxx xxxx xxxx"          # 請輸入你的 16 位元應用程式密碼
+SENDER_EMAIL = "timbot000001@gmail.com"     # 請輸入你的發信 Gmail
+SENDER_PASSWORD = "kooh dutv dggo ecfm"          # 請輸入你的 16 位元應用程式密碼
 
 # ==============================================================================
 # CORE MODULE: Iframe-Safe Cookie Verification (24-Hour Expiration - PERFECT VERSION)
