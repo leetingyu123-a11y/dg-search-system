@@ -139,20 +139,24 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "search_trigger" not in st.session_state:
     st.session_state.search_trigger = False
-
-# 儲存當前正在展示的搜尋結果
 if "current_search" not in st.session_state:
     st.session_state.current_search = None
 
-# 綁定輸入框的 State
-if "widget_class" not in st.session_state:
+# 🌟 核心修正：利用臨時中轉機制，避開 Streamlit 實例化後的修改限制
+if "temp_class" not in st.session_state:
+    st.session_state.temp_class = ""
+if "temp_un" not in st.session_state:
+    st.session_state.temp_un = ""
+
+# 當觸發重新整理時，提早清空即將渲染的輸入框數值
+if st.session_state.get("clear_next_loop", False):
     st.session_state.widget_class = ""
-if "widget_un" not in st.session_state:
     st.session_state.widget_un = ""
+    st.session_state.clear_next_loop = False
 
 def click_history(hist_un, hist_class):
-    st.session_state.widget_class = hist_class
-    st.session_state.widget_un = hist_un
+    st.session_state.temp_class = hist_class
+    st.session_state.temp_un = hist_un
     st.session_state.search_trigger = True
 
 with st.sidebar:
@@ -237,7 +241,11 @@ else:
                 master_df['Detected_SubRisk'] = master_df[sub_risk_col[0]] if sub_risk_col else ""
                 has_master = True
 
-        # 版面重組：拿掉手動 Clear 鈕，讓搜尋按鈕放大填滿
+        # 如果點擊了歷史紀錄，在渲染前先把值寫入中轉區
+        if st.session_state.search_trigger:
+            st.session_state.widget_class = st.session_state.temp_class
+            st.session_state.widget_un = st.session_state.temp_un
+
         col1, col2, col3, col4 = st.columns([2, 2, 2, 1.5])
         with col1:
             st.markdown('<p class="search-label">1. Class / Division</p>', unsafe_allow_html=True)
@@ -251,28 +259,27 @@ else:
         with col4:
             search_pressed = st.button("Search Database", type="primary", use_container_width=True)
 
-        # 🚀 核心邏輯：按下搜尋或觸發歷史紀錄時，立刻抽取數值並把輸入框洗空！
+        # 🚀 觸發搜尋判定：安全抽取數據並排定清空排程
         if search_pressed or st.session_state.search_trigger:
             st.session_state.search_trigger = False
             
-            # 抽取出要搜尋的參數
-            search_class = user_input_class
-            search_un = format_un_number(raw_input_un) if raw_input_un else ""
+            # 安全撈取當前輸入框裡的值
+            final_search_class = user_input_class
+            final_search_un = format_un_number(raw_input_un) if raw_input_un else ""
             
-            # 💡 重點：立刻清空 Widget State，這樣在下一次渲染時輸入框就是乾淨空白的！
-            st.session_state.widget_class = ""
-            st.session_state.widget_un = ""
-            
-            # 將本次搜尋參數存進結果快取中，供下方渲染使用
+            # 將本次搜尋鎖定在當前展示結果中
             st.session_state.current_search = {
-                "class": search_class,
-                "un": search_un,
+                "class": final_search_class,
+                "un": final_search_un,
                 "carrier": selected_partner
             }
-            st.rerun() # 強制刷新，讓輸入框立刻清空，同時保留搜尋狀態
+            
+            # 💡 安全洗空核心：標記下一輪啟動時清除，並強制 rerun，避開元件實例化修改限令
+            st.session_state.clear_next_loop = True
+            st.rerun()
 
         # -------------------------------------------------------------
-        # 📊 渲染展示邏輯 (從快取讀取當前搜尋結果)
+        # 📊 渲染展示邏輯
         # -------------------------------------------------------------
         if st.session_state.current_search is not None:
             c_search = st.session_state.current_search
@@ -311,7 +318,7 @@ else:
                 matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Category Search"})
 
             if is_valid_input and matched_master_records:
-                # 寫入側邊欄歷史紀錄
+                # 寫入歷史紀錄
                 log = {"un": input_un, "class": final_class}
                 if log not in st.session_state.history:
                     st.session_state.history.insert(0, log)
@@ -367,7 +374,6 @@ else:
                         specific_dg_list = []  
                         collapsed_list = []    
 
-                        # 1. 精確 UN 規則
                         if input_un:
                             for _, row in df[df['Clean_UN'] == input_un].iterrows():
                                 if row['Clean_Class'] and not is_class_matching(curr_cls, row['Clean_Class']): continue
@@ -380,7 +386,6 @@ else:
                                         if r_val not in [s["text"] for s in specific_dg_list]:
                                             specific_dg_list.append({"col_name": str(r_col), "text": r_val})
 
-                        # 2. 全域通則
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'] == 'ALL')]
                         universal_counter = 1
                         
@@ -477,5 +482,5 @@ else:
     except Exception as e:
         st.error(f"❌ Execution Bug Found. Error details: {e}")
 
-# Footer (信箱字體直接變色版)
+# Footer (藍色字體專業版)
 st.markdown('<div class="footer-box">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY<br>Copyright © 2026 IAL DG TEAM. All Rights Reserved <br>Any issue and user feedback plz contact <span style="color: #0284c7; font-weight: bold;">tim.lee@interasialine.com</span> via teams.</div>', unsafe_allow_html=True)
