@@ -3,10 +3,10 @@ import pandas as pd
 import os
 import re
 
-# Set page title and wide layout
+# 設定網頁標題與寬版佈局
 st.set_page_config(page_title="Carrier DG Prohibited List Query System", layout="wide")
 
-# Define file paths
+# 定義 Excel 檔案路徑
 excel_file = "dg_list.xlsx"
 if not os.path.exists(excel_file):
     excel_file = os.path.join("DG_System", "dg_list.xlsx")
@@ -16,7 +16,7 @@ if not os.path.exists(master_file):
     master_file = os.path.join("DG_System", "imdg_master.xlsx")
 
 # -------------------------------------------------------------
-# ⚡ STREAMLIT CACHE DATA FUNCTIONS (雲端環境優化版快取)
+# ⚡ STREAMLIT CACHE DATA FUNCTIONS (數據庫高速快取機制)
 # -------------------------------------------------------------
 @st.cache_data
 def load_carrier_excel(file_path, file_timestamp):
@@ -34,6 +34,7 @@ def load_imdg_master(file_path, file_timestamp):
         return df
     return None
 
+# 偵測檔案修改時間，若檔案有變動會自動刷新快取
 excel_time = os.path.getmtime(excel_file) if os.path.exists(excel_file) else 0
 master_time = os.path.getmtime(master_file) if os.path.exists(master_file) else 0
 
@@ -41,6 +42,7 @@ excel_sheets = load_carrier_excel(excel_file, excel_time)
 raw_master_df = load_imdg_master(master_file, master_time)
 # -------------------------------------------------------------
 
+# 核心 🎨 CSS 樣式美化
 st.markdown("""
     <style>
     .psn-card {
@@ -142,7 +144,7 @@ st.markdown("""
 st.title("🚢 Carrier DG Prohibited List Query System")
 
 # -------------------------------------------------------------
-# 🔄 初始化 Session State 暫存區
+# 🔄 初始化 Session State 暫存記憶區
 # -------------------------------------------------------------
 if "search_submitted" not in st.session_state:
     st.session_state.search_submitted = False
@@ -185,6 +187,9 @@ def load_history_query(query_payload):
     st.session_state.last_query = query_payload
     st.session_state.search_submitted = True
 
+# -------------------------------------------------------------
+# 🧼 數據清洗與標準化處理工具
+# -------------------------------------------------------------
 def clean_class_string(class_val):
     if pd.isna(class_val):
         return ""
@@ -207,6 +212,7 @@ def is_class_matching(input_cls, target_cls, exact_mode=False):
     if exact_mode:
         return input_cls == target_cls
 
+    # Class 1 爆炸品家族模糊比對 (1.1, 1.4 等通通視為符合)
     if input_cls.startswith('1') and target_cls.startswith('1'):
         return True
     if input_cls == target_cls:
@@ -260,14 +266,17 @@ def format_un_number(un_val):
         return digit_match.group(0).zfill(4)
     return val_str
 
-# 解析工作表名稱，抓出船東與日期的函式
+# ⚙️ 關鍵：拆解工作表名稱抓出船東與日期的邏輯
 def parse_sheet_version(sheet_name):
-    """將 'IAL_20250906' 拆解成 ('IAL', 'Ver: 20250906')"""
+    """將 'EMC_202606' 拆解成 ('EMC', 'Ver: 202606')"""
     if '_' in sheet_name:
         parts = sheet_name.split('_', 1)
         return parts[0].upper(), f"Ver: {parts[1]}"
     return sheet_name.upper(), "Ver: 最新版"
 
+# -------------------------------------------------------------
+# 🚀 主要程式核心邏輯
+# -------------------------------------------------------------
 if excel_sheets is None:
     st.error("❌ CRITICAL ERROR: dg_list.xlsx not found!")
 else:
@@ -275,7 +284,7 @@ else:
         raw_sheets = [sheet for sheet in excel_sheets.keys() if not (sheet.startswith("Sheet") and excel_sheets[sheet].empty)]
         
         # 建立下拉選單顯示名稱對照表
-        partner_display_map = {} # {"IAL (Ver: 20250906)": "IAL_20250906"}
+        partner_display_map = {} 
         options_list = ["ALL CARRIERS"]
         
         for sheet in raw_sheets:
@@ -311,7 +320,7 @@ else:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
         # -------------------------------------------------------------
-        # 📂 SIDEBAR HISTORIES
+        # 📂 側邊欄歷史查詢紀錄
         # -------------------------------------------------------------
         with st.sidebar:
             st.markdown("### 🔍 Search Intelligence")
@@ -334,7 +343,7 @@ else:
                     st.session_state.history_list = []
                     st.rerun()
 
-        # Interface Layout
+        # 三欄式主要查詢介面
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("### 1. Enter Class / Division")
@@ -349,7 +358,7 @@ else:
         st.button("Search Database", type="primary", use_container_width=True, on_click=handle_search)
 
         # -------------------------------------------------------------
-        # 📊 執行搜尋與渲染邏輯
+        # 📊 執行核心搜尋與結果渲染
         # -------------------------------------------------------------
         if st.session_state.search_submitted and st.session_state.last_query is not None:
             query_data = st.session_state.last_query
@@ -363,8 +372,8 @@ else:
             is_valid_input = True
             matched_master_records = []
             
+            # 多主類別攔截防禦機制 (如 UN 1950, 2037)
             MULTI_CLASS_UNS = ["1950", "2037"]
-            
             if input_un in MULTI_CLASS_UNS and not final_class:
                 st.error(f"❌ INTERCEPT WARNING: UN {input_un} contains multiple regulatory classifications. You MUST enter 'Class' field!")
                 is_valid_input = False
@@ -384,6 +393,7 @@ else:
                     st.error("⚠️ Invalid Format: Class parameters must be numeric numbers.")
                     is_valid_input = False
 
+            # 比對官方母檔獲取準確的主類別與次風險
             if is_valid_input and input_un and has_master:
                 un_exists = master_df[master_df['UN Number'] == input_un]
                 if un_exists.empty:
@@ -401,6 +411,7 @@ else:
             if is_valid_input and not input_un and final_class:
                 matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Category Search"})
 
+            # 開始依據船東條款渲染前端卡片
             if is_valid_input and matched_master_records:
                 st.markdown("---")
                 
@@ -422,7 +433,6 @@ else:
                             </div>
                         """, unsafe_allow_html=True)
                     
-                    # 解析要搜尋的目標工作表
                     if selected_display == "ALL CARRIERS":
                         search_targets = [(sheet, sheet) for sheet in raw_sheets]
                     else:
@@ -543,6 +553,7 @@ else:
                             carrier_payload.update({"border_color": "#10b981", "bg_badge": "#d1fae5", "text_badge": "#065f46", "display_status": "🟢 Standard Acceptance"})
                             green_bucket.append(carrier_payload)
 
+                    # 依據收載狀態排序輸出 (綠 ➔ 黃 ➔ 紅)
                     for target_bucket in [green_bucket, yellow_bucket, red_bucket]:
                         for item in target_bucket:
                             st.markdown(f"""
@@ -565,23 +576,26 @@ else:
                                     with st.expander(f"📋 View Specific DG Remarks ({len(item['specific_dg_list'])} Items)", expanded=False):
                                         specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in item['specific_dg_list']])
                                         st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
-if item['collapsed_list']:
+                                
+                                # --- 這裡已修正引號衝突，完全安全的 for 迴圈拆解寫法 ---
+                                if item['collapsed_list']:
                                     with st.expander(f"📄 View Global / Universal DG Policies ({len(item['collapsed_list'])} Items)", expanded=False):
-                                        # --- 修正後的安全寫法 (將複雜單行拆解為 for 迴圈) ---
                                         collapsed_html_list = []
                                         for idx, rem in enumerate(item['collapsed_list']):
                                             num_tag = f"Universal DG Policy {rem['num']}. " if idx == 0 else f"{rem['num']}. "
                                             line_html = f'<div class="collapsed-header">📌 {num_tag}</div><div class="remark-line">{rem["text"]}</div>'
                                             collapsed_html_list.append(line_html)
                                         collapsed_html = "".join(collapsed_html_list)
-                                        # --------------------------------------------------
                                         st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
+                                # ----------------------------------------------------------------------
+                            st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("<br><br>", unsafe_allow_html=True)
                             
     except Exception as e:
         st.error(f"❌ File reading failed. Error message: {e}")
 
 # -------------------------------------------------------------
-# FOOTER
+# FOOTER 頁尾與安全條款
 # -------------------------------------------------------------
 st.markdown("""
     <div class="footer-box">
