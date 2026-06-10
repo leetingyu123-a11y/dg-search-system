@@ -106,13 +106,20 @@ if not st.session_state.authenticated:
         otp_input = st.text_input("Enter the 6-digit verification code:", type="default", max_chars=6)
         
         col1, col2 = st.columns([1, 4])
-        with col1:
+       with col1:
             if st.button("Verify", type="primary"):
-                if otp_input.strip() == st.session_state.real_unlock == st.session_state.real_otp:
-                    pass  # Just a secondary check wrapper
-                
+                # 修正後的乾淨判斷式
                 if otp_input.strip() == st.session_state.real_otp:
                     st.session_state.authenticated = True
+                    
+                    # 🍪 Save verification status to browser cookie (Valid for 24 hours / 86400 seconds)
+                    cookie_manager.set("sys_auth_verified", "true", max_age=86400)
+                    cookie_manager.set("sys_auth_email", st.session_state.user_email, max_age=86400)
+                    
+                    st.success("🔓 Verification successful! Logging in...")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid verification code. Please try again.")
                     
                     # 🍪 Save verification status to browser cookie (Valid for 24 hours / 86400 seconds)
                     cookie_manager.set("sys_auth_verified", "true", max_age=86400)
