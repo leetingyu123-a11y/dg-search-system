@@ -132,35 +132,48 @@ st.markdown("""
 st.title("🚢 Carrier DG Prohibited List Query System")
 
 # -------------------------------------------------------------
-# 🔄 處理「搜尋後輸入框自動清空」的核心機制
+# 🔄 初始化 Session State 暫存區 (包含簡化版歷史紀錄)
 # -------------------------------------------------------------
 if "search_submitted" not in st.session_state:
     st.session_state.search_submitted = False
 if "last_query" not in st.session_state:
     st.session_state.last_query = None
+if "history_list" not in st.session_state:
+    st.session_state.history_list = []
 
-# 當按下搜尋按鈕時触发的 CallBack
+# 觸發搜尋的 CallBack
 def handle_search():
-    # 先把當前輸入框的值撈出來存入暫存區
     cls_val = st.session_state.input_class_widget.strip()
     un_val = st.session_state.input_un_widget.strip()
     carrier_val = st.session_state.input_carrier_widget
     
     if cls_val or un_val:
-        st.session_state.last_query = {
+        query_payload = {
             "class": cls_val,
             "un": un_val,
             "carrier": carrier_val
         }
+        st.session_state.last_query = query_payload
         st.session_state.search_submitted = True
+        
+        # 紀錄歷史：若不重複則塞入最上方，最多保留 5 筆
+        history_display = f"UN {un_val if un_val else 'ALL'} / Cls {cls_val if cls_val else 'ALL'}"
+        if history_display not in [h["display"] for h in st.session_state.history_list]:
+            st.session_state.history_list.insert(0, {"display": history_display, "data": query_payload})
+            if len(st.session_state.history_list) > 5:
+                st.session_state.history_list.pop()
     else:
         st.session_state.search_submitted = False
         st.session_state.last_query = None
 
-    # 清空輸入框的 Widget State
+    # 清空輸入框的 Widget State，維持預設空白
     st.session_state.input_class_widget = ""
     st.session_state.input_un_widget = ""
 
+# 點擊歷史紀錄回填的 CallBack
+def load_history_query(query_payload):
+    st.session_state.last_query = query_payload
+    st.session_state.search_submitted = True
 # -------------------------------------------------------------
 
 def clean_class_string(class_val):
@@ -182,7 +195,6 @@ def is_class_matching(input_cls, target_cls, exact_mode=False):
     
     if target_cls == 'ALL':
         return True
-        
     if exact_mode:
         return input_cls == target_cls
 
@@ -271,7 +283,31 @@ else:
             except Exception as e:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
-        # Interface Layout (輸入框預設永遠是空白)
+        # -------------------------------------------------------------
+        # 📂 SIMPLIFIED SIDEBAR (簡化好看版歷史紀錄)
+        # -------------------------------------------------------------
+        with st.sidebar:
+            st.markdown("### 🔍 Search Intelligence")
+            st.metric(label="Recent Queries Tracked", value=len(st.session_state.history_list))
+            st.markdown("---")
+            st.markdown("#### 🕒 Quick Recall (Last 5)")
+            
+            if not st.session_state.history_list:
+                st.caption("No recent searches. History is clear.")
+            else:
+                for idx, item in enumerate(st.session_state.history_list):
+                    col_hist, col_btn = st.columns([4, 1])
+                    with col_hist:
+                        st.markdown(f"**{idx+1}.** `{item['display']}`")
+                    with col_btn:
+                        st.button("🔄", key=f"recall_{idx}", on_click=load_history_query, args=(item['data'],), help="Click to recall this query")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🧹 Clear History", use_container_width=True, type="secondary"):
+                    st.session_state.history_list = []
+                    st.rerun()
+
+        # Interface Layout (主要輸入區)
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("### 1. Enter Class / Division")
@@ -284,11 +320,11 @@ else:
             partner_options = ["ALL CARRIERS"] + all_partners
             selected_partner = st.selectbox("Partner Filter", partner_options, key="input_carrier_widget", label_visibility="collapsed")
 
-        # 點擊按鈕直接觸發 handle_search 清空輸入框
+        # 點擊按鈕執行
         st.button("Search Database", type="primary", use_container_width=True, on_click=handle_search)
 
         # -------------------------------------------------------------
-        # 📊 執行搜尋與渲染邏輯 (從暫存區讀取上一次提交的資料)
+        # 📊 執行搜尋與渲染邏輯 (綠 -> 黃 -> 紅 排序呈現)
         # -------------------------------------------------------------
         if st.session_state.search_submitted and st.session_state.last_query is not None:
             query_data = st.session_state.last_query
@@ -375,7 +411,6 @@ else:
                     
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
-                    # 建立三個獨立的桶子用來裝不同燈號的結果
                     green_bucket = []
                     yellow_bucket = []
                     red_bucket = []
@@ -409,7 +444,6 @@ else:
                         specific_dg_list = []  
                         collapsed_list = []    
 
-                        # 1. Check Exact UN Matches First
                         if input_un:
                             exact_matches = df[df['Clean_UN'] == input_un]
                             for _, row in exact_matches.iterrows():
@@ -436,7 +470,6 @@ else:
                                         if r_val not in [c["text"] for c in specific_dg_list]:
                                             specific_dg_list.append({"col_name": r_col, "text": r_val})
 
-                        # 2. Check Global Policy Rules
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
                         universal_counter = 1
                         
@@ -473,7 +506,6 @@ else:
                                             if r_val not in [c["text"] for c in specific_dg_list]:
                                                 specific_dg_list.append({"col_name": label, "text": r_val})
 
-                        # 3. 統計狀態（只看真正匹配成功的那些行）
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
                         
@@ -486,7 +518,6 @@ else:
                                 if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
                                     is_any_row_remarked = True
 
-                        # 打包該船東的渲染資料
                         un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
                         carrier_payload = {
                             "sheet_name": sheet_name,
@@ -496,7 +527,6 @@ else:
                             "carrier_matched_rows": carrier_matched_rows
                         }
 
-                        # 根據核心規則，將資料分流到各自的燈號桶子裡
                         if is_any_row_prohibited:
                             carrier_payload.update({"border_color": "#ef4444", "bg_badge": "#fee2e2", "text_badge": "#991b1b", "display_status": "🔴 Strictly Prohibited"})
                             red_bucket.append(carrier_payload)
@@ -507,7 +537,7 @@ else:
                             carrier_payload.update({"border_color": "#10b981", "bg_badge": "#d1fae5", "text_badge": "#065f46", "display_status": "🟢 Standard Acceptance"})
                             green_bucket.append(carrier_payload)
 
-                    # 🌟 核心修改：依序從 綠燈 -> 黃燈 -> 紅燈 進行畫面渲染
+                    # 依序渲染 綠 -> 黃 -> 紅
                     for target_bucket in [green_bucket, yellow_bucket, red_bucket]:
                         for item in target_bucket:
                             st.markdown(f"""
@@ -522,14 +552,12 @@ else:
                             if not item['carrier_matched_rows'] and not item['specific_dg_list']:
                                 st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                             else:
-                                # 📂 摺疊 1：專屬特定 DG 項目
                                 if item['specific_dg_list']:
                                     specific_label = f"📋 View Specific DG Remarks ({len(item['specific_dg_list'])} Items)"
                                     with st.expander(specific_label, expanded=False):
                                         specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in item['specific_dg_list']])
                                         st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
                                 
-                                # 📂 摺疊 2：通用通則
                                 if item['collapsed_list']:
                                     expander_label = f"📄 View Global / Universal DG Policies ({len(item['collapsed_list'])} Items)"
                                     with st.expander(expander_label, expanded=False):
