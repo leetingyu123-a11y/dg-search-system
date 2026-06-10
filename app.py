@@ -1,5 +1,5 @@
 import streamlit as st
-import datetime  # ✅ Added to fix the NameError
+import datetime  
 import random
 import smtplib
 import time  # 引入時間模組來處理時間差
@@ -201,7 +201,6 @@ if st.sidebar.button("Log Out 🔒"):
 # 讀取 Excel 檔案、IMDG 主資料庫以及你原本寫的所有功能...
 
 # 側邊欄加上登入者提示
-st.sidebar.info(f"👤 當前登入：{st.session_state.user_email}")
 import streamlit as st
 import pandas as pd
 import os
