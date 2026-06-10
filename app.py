@@ -142,13 +142,11 @@ if "search_trigger" not in st.session_state:
 if "current_search" not in st.session_state:
     st.session_state.current_search = None
 
-# 🌟 核心修正：利用臨時中轉機制，避開 Streamlit 實例化後的修改限制
 if "temp_class" not in st.session_state:
     st.session_state.temp_class = ""
 if "temp_un" not in st.session_state:
     st.session_state.temp_un = ""
 
-# 當觸發重新整理時，提早清空即將渲染的輸入框數值
 if st.session_state.get("clear_next_loop", False):
     st.session_state.widget_class = ""
     st.session_state.widget_un = ""
@@ -241,7 +239,6 @@ else:
                 master_df['Detected_SubRisk'] = master_df[sub_risk_col[0]] if sub_risk_col else ""
                 has_master = True
 
-        # 如果點擊了歷史紀錄，在渲染前先把值寫入中轉區
         if st.session_state.search_trigger:
             st.session_state.widget_class = st.session_state.temp_class
             st.session_state.widget_un = st.session_state.temp_un
@@ -259,27 +256,22 @@ else:
         with col4:
             search_pressed = st.button("Search Database", type="primary", use_container_width=True)
 
-        # 🚀 觸發搜尋判定：安全抽取數據並排定清空排程
         if search_pressed or st.session_state.search_trigger:
             st.session_state.search_trigger = False
             
-            # 安全撈取當前輸入框裡的值
             final_search_class = user_input_class
             final_search_un = format_un_number(raw_input_un) if raw_input_un else ""
             
-            # 將本次搜尋鎖定在當前展示結果中
             st.session_state.current_search = {
                 "class": final_search_class,
                 "un": final_search_un,
                 "carrier": selected_partner
             }
-            
-            # 💡 安全洗空核心：標記下一輪啟動時清除，並強制 rerun，避開元件實例化修改限令
             st.session_state.clear_next_loop = True
             st.rerun()
 
         # -------------------------------------------------------------
-        # 📊 渲染展示邏輯
+        # 📊 📊 📊 渲染展示邏輯
         # -------------------------------------------------------------
         if st.session_state.current_search is not None:
             c_search = st.session_state.current_search
@@ -374,6 +366,7 @@ else:
                         specific_dg_list = []  
                         collapsed_list = []    
 
+                        # 1. 精確 UN 規則
                         if input_un:
                             for _, row in df[df['Clean_UN'] == input_un].iterrows():
                                 if row['Clean_Class'] and not is_class_matching(curr_cls, row['Clean_Class']): continue
@@ -386,6 +379,7 @@ else:
                                         if r_val not in [s["text"] for s in specific_dg_list]:
                                             specific_dg_list.append({"col_name": str(r_col), "text": r_val})
 
+                        # 2. 全域通則 (當 Clean_Class 為 ALL 時即為大通則)
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'] == 'ALL')]
                         universal_counter = 1
                         
@@ -414,14 +408,21 @@ else:
                                             if r_val not in [s["text"] for s in specific_dg_list]:
                                                 specific_dg_list.append({"col_name": lbl, "text": r_val})
 
+                        # 🎯 嚴格遵照你的初心邏輯判定燈號
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
+                        
                         if carrier_matched_rows:
                             for r in carrier_matched_rows:
                                 p_txt = str(r['Clean_Prohibited']).upper()
                                 r_txt = str(r['Clean_HasRemark']).upper()
-                                if any(k in p_txt for k in ["🔴", "禁收", "YES", "PROHIBITED"]): is_any_row_prohibited = True
-                                if any(k in r_txt for k in ["🟡", "YES", "TRUE"]): is_any_row_remarked = True
+                                
+                                # 只要有任何一行 Prohibited 填 YES 欄位就是紅燈
+                                if "YES" in p_txt or p_txt == "TRUE":
+                                    is_any_row_prohibited = True
+                                # 只要有任何一行 Has Remark 填 YES 欄位就是黃燈
+                                if "YES" in r_txt or r_txt == "TRUE":
+                                    is_any_row_remarked = True
 
                         partner_data = {
                             "sheet_name": sheet,
@@ -430,13 +431,15 @@ else:
                             "collapsed_list": collapsed_list
                         }
 
+                        # 燈號分流：紅燈 > 黃燈 > 其餘綠燈（大通則不強行干涉燈號，僅作內容展示）
                         if is_any_row_prohibited:
                             prohibited_bucket.append(partner_data)
-                        elif is_any_row_remarked or specific_dg_list:
+                        elif is_any_row_remarked:
                             remarked_bucket.append(partner_data)
                         else:
                             standard_bucket.append(partner_data)
 
+                    # 渲染：綠 -> 黃 -> 紅
                     final_render_flow = [
                         ("standard", standard_bucket, "#10b981", "#d1fae5", "#065f46", "🟢 Standard Acceptance"),
                         ("remarked", remarked_bucket, "#f59e0b", "#fef3c7", "#92400e", "🟡 Conditional Acceptance / Review Remarks"),
@@ -461,7 +464,7 @@ else:
                                 </div>
                             """, unsafe_allow_html=True)
 
-                            if not m_rows and not s_list:
+                            if not m_rows and not s_list and not c_list:
                                 st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
                             else:
                                 if s_list:
@@ -482,5 +485,5 @@ else:
     except Exception as e:
         st.error(f"❌ Execution Bug Found. Error details: {e}")
 
-# Footer (藍色字體專業版)
+# Footer 
 st.markdown('<div class="footer-box">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY<br>Copyright © 2026 IAL DG TEAM. All Rights Reserved <br>Any issue and user feedback plz contact <span style="color: #0284c7; font-weight: bold;">tim.lee@interasialine.com</span> via teams.</div>', unsafe_allow_html=True)
