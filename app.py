@@ -1,41 +1,62 @@
-def get_client_ip():
+import streamlit as st
+import pandas as pd
+# ... 你原本長串代碼自帶的其他 import 請保留 ...
+
+# ==============================================================================
+# 核心外掛：公司內網自動放行機制 (只要在公司內網，不需登入直接看)
+# ==============================================================================
+def check_intranet_access():
     """
+    檢查使用者是否處於公司內網環境。
+    只要符合公司對外公網 IP 或公司內網專屬網段，即判定為內部同仁並放行。
     """
     try:
         headers = st.context.headers
-        
         if "X-Forwarded-For" in headers:
-            # 這時候 ip_chain 可能長這樣: ['192.168.1.167', '123.51.189.110']
+            # 拆解連線 IP 鏈
             ip_chain = [ip.strip() for ip in headers["X-Forwarded-For"].split(",")]
             
             for ip in ip_chain:
-                # 1. 跳過本機測試 IP
-                if ip.startswith("127.") or ip == "localhost":
-                    continue
-                # 2. 跳過常見的公司內網/虛擬網段 (192.168.x.x 與 10.x.x.x)
-                if ip.startswith("192.168.") or ip.startswith("10."):
-                    continue
-                # 3. 跳過 B 類內網網段 (172.16.x.x ~ 172.31.x.x)
-                if ip.startswith("172."):
-                    try:
-                        parts = ip.split('.')
-                        if 16 <= int(parts[1]) <= 31:
-                            continue
-                    except Exception:
-                        pass
+                # 1. 檢查是否符合公司的對外固定公網 IP (全公司上網共用此 IP)
+                if ip == "123.51.189.110":
+                    return True, ip
                 
-                # 只要不是內網 IP，這就是你真正的對外公網 IP (例如 123.51.189.110)
-                return ip
-            
-            # 如果整條鏈路都是內網 IP（通常不可能），才保底回傳第一個
-            return ip_chain[0]
-            
+                # 2. 檢查是否符合公司內網的虛擬網段（例如 192.168.1.X）
+                if ip.startswith("192.168.1."):
+                    return True, ip
+                
+                # 💡 提示：如果公司未來有其他內網網段（例如 10.X.X.X 或 172.16.X.X），
+                # 可以在下方直接複製這一行貼上修改：
+                # if ip.startswith("10."): return True, ip
+                
+        # 保底檢查 X-Real-Ip 標頭
         if "X-Real-Ip" in headers:
-            return headers["X-Real-Ip"].strip()
-            
+            real_ip = headers["X-Real-Ip"].strip()
+            if real_ip == "123.51.189.110" or real_ip.startswith("192.168.1."):
+                return True, real_ip
+                
     except Exception:
         pass
-    return None
+    return False, None
+
+# 執行內網驗證
+is_internal_staff, detected_ip = check_intranet_access()
+
+if not is_internal_staff:
+    # 只要不是公司內網進來的連線，一律顯示此錯誤並鎖死網頁
+    st.error("🔒 安全存取限制：本系統僅限公司內網同仁存取，外網環境未獲授權。")
+    if detected_ip:
+        st.caption(f"您的連線 IP 節點為: {detected_ip}")
+    
+    # 🛑 攔截點：外網路人、駭客到這裡就會被完全卡死，後面的幾百行商業邏輯連跑都不會跑
+    st.stop()
+
+
+# ==============================================================================
+# 3. 這裡以下，完全接回你原本那一長串的精細查詢系統程式碼（一字不改）
+# ==============================================================================
+# 例如：st.set_page_config(...) 
+# 以及你們處理船東禁裝清單、Excel 讀取、Session State 與顏色標記的所有核心程式碼...
 
 
 # ==========================================================
