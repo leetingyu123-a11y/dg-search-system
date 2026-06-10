@@ -289,7 +289,7 @@ else:
         
         for sheet in raw_sheets:
             carrier_name, ver_str = parse_sheet_version(sheet)
-            display_label = f"{carrier_name})"
+            display_label = f"{carrier_name}"
             partner_display_map[display_label] = sheet
             options_list.append(display_label)
         
