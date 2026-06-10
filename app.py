@@ -6,46 +6,6 @@ import re
 # 設定網頁標題與寬版佈局
 st.set_page_config(page_title="Carrier DG Prohibited List Query System", layout="wide")
 
-# =============================================================
-# 🔒 企業安全存取控制門禁 (Company Domain Security Access)
-# =============================================================
-# 1. 設定允許的公司信箱網域 (例如你們公司的網域)
-ALLOWED_DOMAIN = "interasialine.com" 
-
-# 2. 特殊允許名單 (例如 Kuma 或是外部合作夥伴，若無則保留空列表)
-SPECIAL_ALLOWED_USERS = [
-    "kuma_example@gmail.com"  # 請改為 Kuma 實際登入 Streamlit 的信箱
-]
-
-# 3. 獲取當前登入 Streamlit Cloud 的用戶資訊
-current_user = st.user
-
-if current_user and current_user.email:
-    user_email = current_user.email.lower().strip()
-    
-    # 擷取信箱後綴 (abc@company.com -> company.com)
-    user_domain = user_email.split('@')[-1] if '@' in user_email else ""
-    
-    # 進行安全校驗
-    is_company_staff = (user_domain == ALLOWED_DOMAIN.lower().strip())
-    is_special_guest = (user_email in [email.lower().strip() for email in SPECIAL_ALLOWED_USERS])
-    
-    if not (is_company_staff or is_special_guest):
-        st.error(f"🚫 存取遭拒：您的信箱 ({user_email}) 非本公司授權同仁！")
-        st.info(f"本系統僅限 ＠{ALLOWED_DOMAIN} 同仁及特定授權人員使用。")
-        # 頁尾安全聲明 (即使阻擋也要維持美觀)
-        st.markdown('<div style="text-align: center; margin-top: 100px; color: #94a3b8;">IAL DG TEAM - Security Control System</div>', unsafe_allow_html=True)
-        st.stop()  # 🛑 核心封鎖線：權限不符，強制中斷，後續任何 Excel 讀取與 UI 均不執行
-else:
-    # 使用者尚未登入 Streamlit 帳號
-    st.warning("🔒 本系統僅限公司內部同仁使用，請先登入。")
-    st.info("請點擊頁面右上角的登入按鈕，並使用您的公司信箱（或綁定該信箱的 Google/GitHub 帳號）登入。")
-    st.markdown('<div style="text-align: center; margin-top: 100px; color: #94a3b8;">IAL DG TEAM - Security Control System</div>', unsafe_allow_html=True)
-    st.stop()  # 🛑 核心封鎖線：未登入者直接中斷
-
-# =============================================================
-
-
 # 定義 Excel 檔案路徑
 excel_file = "dg_list.xlsx"
 if not os.path.exists(excel_file):
@@ -304,7 +264,7 @@ def format_un_number(un_val):
     digit_match = re.search(r'\d+', val_str)
     if digit_match:
         return digit_match.group(0).zfill(4)
-    return val_val
+    return val_str
 
 # ⚙️ 關鍵：拆解工作表名稱抓出船東與日期的邏輯
 def parse_sheet_version(sheet_name):
@@ -360,7 +320,7 @@ else:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
         # -------------------------------------------------------------
-        # 🔒 側邊欄歷史查詢紀錄
+        # 📂 側邊欄歷史查詢紀錄
         # -------------------------------------------------------------
         with st.sidebar:
             st.markdown("### 🔍 Search Intelligence")
@@ -627,6 +587,7 @@ else:
                                             collapsed_html_list.append(line_html)
                                         collapsed_html = "".join(collapsed_html_list)
                                         st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
+                                # ----------------------------------------------------------------------
                             st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("<br><br>", unsafe_allow_html=True)
                             
@@ -640,6 +601,6 @@ st.markdown("""
     <div class="footer-box">
         <div style="color: #e11d48; font-weight: bold; margin-bottom: 8px;">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY</div>
         <div>Copyright © 2026 IAL DG TEAM. All Rights Reserved.</div>
-        <div>Any issue contact <a href="mailto:tim.lee@interasialine.com" style="color: #38bdf8; text-decoration: none; font-weight: bold;">tim.lee@interasialine.com</a></div>
+        <div style="font-size: 13px; color: #94a3b8;">Any issue contact <a href="mailto:tim.lee@interasialine.com" style="color: #38bdf8; text-decoration: none; font-weight: bold;">tim.lee@interasialine.com</a></div>
     </div>
     """, unsafe_allow_html=True)
