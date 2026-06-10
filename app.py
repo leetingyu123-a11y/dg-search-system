@@ -67,6 +67,16 @@ st.markdown("""
         display: inline-block;
         margin-bottom: 0px;
     }
+    .version-badge {
+        font-size: 13px !important;
+        background-color: #e2e8f0;
+        color: #475569;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+        margin-left: 10px;
+        display: inline-block;
+    }
     .remark-box {
         background-color: #ffffff;
         padding: 15px;
@@ -141,7 +151,6 @@ if "last_query" not in st.session_state:
 if "history_list" not in st.session_state:
     st.session_state.history_list = []
 
-# 觸發搜尋的 CallBack
 def handle_search():
     cls_val = st.session_state.input_class_widget.strip()
     un_val = st.session_state.input_un_widget.strip()
@@ -156,7 +165,6 @@ def handle_search():
         st.session_state.last_query = query_payload
         st.session_state.search_submitted = True
         
-        # 建立純淨的歷史顯示名稱 (只留 UN 號碼，若無 UN 則留 Class)
         if un_val:
             history_display = f"UN {un_val}"
         else:
@@ -170,15 +178,12 @@ def handle_search():
         st.session_state.search_submitted = False
         st.session_state.last_query = None
 
-    # 清空輸入框的 Widget State，維持預設空白
     st.session_state.input_class_widget = ""
     st.session_state.input_un_widget = ""
 
-# 點擊歷史紀錄按鈕回填的 CallBack
 def load_history_query(query_payload):
     st.session_state.last_query = query_payload
     st.session_state.search_submitted = True
-# -------------------------------------------------------------
 
 def clean_class_string(class_val):
     if pd.isna(class_val):
@@ -255,11 +260,29 @@ def format_un_number(un_val):
         return digit_match.group(0).zfill(4)
     return val_str
 
+# 解析工作表名稱，抓出船東與日期的函式
+def parse_sheet_version(sheet_name):
+    """將 'IAL_20250906' 拆解成 ('IAL', 'Ver: 20250906')"""
+    if '_' in sheet_name:
+        parts = sheet_name.split('_', 1)
+        return parts[0].upper(), f"Ver: {parts[1]}"
+    return sheet_name.upper(), "Ver: 最新版"
+
 if excel_sheets is None:
     st.error("❌ CRITICAL ERROR: dg_list.xlsx not found!")
 else:
     try:
-        all_partners = [sheet for sheet in excel_sheets.keys() if not (sheet.startswith("Sheet") and excel_sheets[sheet].empty)]
+        raw_sheets = [sheet for sheet in excel_sheets.keys() if not (sheet.startswith("Sheet") and excel_sheets[sheet].empty)]
+        
+        # 建立下拉選單顯示名稱對照表
+        partner_display_map = {} # {"IAL (Ver: 20250906)": "IAL_20250906"}
+        options_list = ["ALL CARRIERS"]
+        
+        for sheet in raw_sheets:
+            carrier_name, ver_str = parse_sheet_version(sheet)
+            display_label = f"{carrier_name} ({ver_str})"
+            partner_display_map[display_label] = sheet
+            options_list.append(display_label)
         
         has_master = False
         if raw_master_df is not None:
@@ -288,7 +311,7 @@ else:
                 st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
 
         # -------------------------------------------------------------
-        # 📂 SIMPLIFIED SIDEBAR (優化：點擊文字按鈕直接回填)
+        # 📂 SIDEBAR HISTORIES
         # -------------------------------------------------------------
         with st.sidebar:
             st.markdown("### 🔍 Search Intelligence")
@@ -298,7 +321,6 @@ else:
                 st.caption("No recent searches. History is clear.")
             else:
                 for idx, item in enumerate(st.session_state.history_list):
-                    # 將整行做成按鈕，點擊直接回填搜尋
                     st.button(
                         label=f"{idx+1}. {item['display']}", 
                         key=f"recall_{idx}", 
@@ -312,7 +334,7 @@ else:
                     st.session_state.history_list = []
                     st.rerun()
 
-        # Interface Layout (主要輸入區)
+        # Interface Layout
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("### 1. Enter Class / Division")
@@ -322,14 +344,12 @@ else:
             raw_input_un = st.text_input("UN Number Input", placeholder="e.g., 0005, 1950, 2430", key="input_un_widget", label_visibility="collapsed")
         with col3:
             st.markdown("### 3. Filter by Carrier")
-            partner_options = ["ALL CARRIERS"] + all_partners
-            selected_partner = st.selectbox("Partner Filter", partner_options, key="input_carrier_widget", label_visibility="collapsed")
+            selected_display = st.selectbox("Partner Filter", options_list, key="input_carrier_widget", label_visibility="collapsed")
 
-        # 點擊按鈕執行
         st.button("Search Database", type="primary", use_container_width=True, on_click=handle_search)
 
         # -------------------------------------------------------------
-        # 📊 執行搜尋與渲染邏輯 (綠 -> 黃 -> 紅 排序呈現)
+        # 📊 執行搜尋與渲染邏輯
         # -------------------------------------------------------------
         if st.session_state.search_submitted and st.session_state.last_query is not None:
             query_data = st.session_state.last_query
@@ -338,7 +358,7 @@ else:
             input_un = format_un_number(query_data["un"]) if query_data["un"] else ""
             if input_un == 'ALL': 
                 input_un = ""
-            selected_partner = query_data["carrier"]
+            selected_display = query_data["carrier"]
             
             is_valid_input = True
             matched_master_records = []
@@ -346,11 +366,11 @@ else:
             MULTI_CLASS_UNS = ["1950", "2037"]
             
             if input_un in MULTI_CLASS_UNS and not final_class:
-                st.error(f"❌ INTERCEPT WARNING: UN {input_un} contains multiple regulatory classifications (e.g., 2.1/2.2/2.3). You MUST enter the 'Class / Division' field to perform this search!")
+                st.error(f"❌ INTERCEPT WARNING: UN {input_un} contains multiple regulatory classifications. You MUST enter 'Class' field!")
                 is_valid_input = False
                 
             if is_valid_input and not input_un and not final_class:
-                st.warning("⚠️ Action Required: Please enter at least a UN Number or a Class/Division to perform search.")
+                st.warning("⚠️ Action Required: Please enter at least a UN Number or a Class/Division.")
                 is_valid_input = False
                 
             if is_valid_input and final_class and final_class != 'ALL':
@@ -358,7 +378,7 @@ else:
                 try:
                     class_num = float(cleaned_num_str)
                     if class_num < 1.0 or class_num >= 10.0:
-                        st.error("❌ Input Error: IMDG Code Dangerous Goods Classes only range from 1 to 9.")
+                        st.error("❌ Input Error: Classes only range from 1 to 9.")
                         is_valid_input = False
                 except ValueError:
                     st.error("⚠️ Invalid Format: Class parameters must be numeric numbers.")
@@ -367,28 +387,16 @@ else:
             if is_valid_input and input_un and has_master:
                 un_exists = master_df[master_df['UN Number'] == input_un]
                 if un_exists.empty:
-                    st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in the official IMDG Code Master Database!")
+                    st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in IMDG Code Master Database!")
                     is_valid_input = False
                 else:
                     unique_un_exists = un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk', 'PSN'])
-                    
                     for _, master_row in unique_un_exists.iterrows():
                         db_class = clean_class_string(master_row['Class'])
                         db_subrisk = str(master_row['Detected_SubRisk']).strip() if pd.notna(master_row['Detected_SubRisk']) else ""
                         db_psn = str(master_row['PSN']).strip() if 'PSN' in master_row else ""
-                        
-                        if not final_class or final_class == 'ALL':
+                        if not final_class or final_class == 'ALL' or is_class_matching(final_class, db_class):
                             matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
-                        else:
-                            if is_class_matching(final_class, db_class):
-                                matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
-                    
-                    if not matched_master_records and final_class and final_class != 'ALL':
-                        clean_listed_classes = [clean_class_string(c) for c in un_exists['Class'].tolist()]
-                        st.error(f"❌ Mismatch Warning: Official IMDG lists UN {input_un} under Class `{clean_listed_classes}`.")
-                        is_valid_input = False
-                    elif not final_class and len(matched_master_records) > 1:
-                        st.info(f"💡 Multi-Category Alert: UN {input_un} contains {len(matched_master_records)} distinct regulatory classifications.")
 
             if is_valid_input and not input_un and final_class:
                 matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Category Search"})
@@ -414,13 +422,19 @@ else:
                             </div>
                         """, unsafe_allow_html=True)
                     
-                    search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
+                    # 解析要搜尋的目標工作表
+                    if selected_display == "ALL CARRIERS":
+                        search_targets = [(sheet, sheet) for sheet in raw_sheets]
+                    else:
+                        target_sheet = partner_display_map[selected_display]
+                        search_targets = [(target_sheet, selected_display)]
                     
                     green_bucket = []
                     yellow_bucket = []
                     red_bucket = []
                     
-                    for sheet_name in search_targets:
+                    for sheet_name, display_label in search_targets:
+                        carrier_clean_name, version_tag = parse_sheet_version(sheet_name)
                         df = excel_sheets[sheet_name].copy()
                         df.columns = df.columns.astype(str).str.strip()
                         
@@ -434,7 +448,7 @@ else:
                             if 'subrisk' in c_lower or '次要' in c_lower or 'subsidiary' in c_lower: col_mapping['SubRisk'] = c
                         
                         if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Prohibited' not in col_mapping:
-                            st.error(f"⚠️ Sheet `{sheet_name}` structure error. Column resolution failed.")
+                            st.error(f"⚠️ Sheet `{sheet_name}` structure error.")
                             continue
                         
                         remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
@@ -454,12 +468,8 @@ else:
                             for _, row in exact_matches.iterrows():
                                 carrier_cls = row['Clean_Class']
                                 carrier_subrisk = row['Clean_SubRisk']
-                                
-                                if carrier_cls and not is_class_matching(current_class, carrier_cls):
-                                    continue
-                                if carrier_subrisk and master_subrisk_list:
-                                    if carrier_subrisk not in master_subrisk_list:
-                                        continue
+                                if carrier_cls and not is_class_matching(current_class, carrier_cls): continue
+                                if carrier_subrisk and master_subrisk_list and carrier_subrisk not in master_subrisk_list: continue
                                 carrier_matched_rows.append(row)
                                 
                                 if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
@@ -468,12 +478,10 @@ else:
                                         specific_dg_list.append({"col_name": "Has Remark", "text": hr_val})
                                 
                                 for r_col in remark_cols:
-                                    if 'HasRemark' in col_mapping and r_col == col_mapping['HasRemark']:
-                                        continue
+                                    if 'HasRemark' in col_mapping and r_col == col_mapping['HasRemark']: continue
                                     r_val = str(row[r_col]).strip()
-                                    if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        if r_val not in [c["text"] for c in specific_dg_list]:
-                                            specific_dg_list.append({"col_name": r_col, "text": r_val})
+                                    if r_val and r_val.lower() != 'nan' and r_val != '' and r_val not in [c["text"] for c in specific_dg_list]:
+                                        specific_dg_list.append({"col_name": r_col, "text": r_val})
 
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
                         universal_counter = 1
@@ -494,17 +502,12 @@ else:
                             
                             if main_class_hit or sub_risk_hit:
                                 carrier_matched_rows.append(g_row)
-                                
                                 for r_col in remark_cols:
                                     r_val = str(g_row[r_col]).strip()
                                     if r_val and r_val.lower() != 'nan' and r_val != '':
                                         if carrier_restricted_cls == 'ALL':
                                             if r_val not in [c["text"] for c in collapsed_list]:
-                                                collapsed_list.append({
-                                                    "col_name": "Universal DG Policy",
-                                                    "text": r_val,
-                                                    "num": universal_counter
-                                                })
+                                                collapsed_list.append({"col_name": "Universal DG Policy", "text": r_val, "num": universal_counter})
                                                 universal_counter += 1
                                         else:
                                             label = f"Main Class {carrier_restricted_cls} Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
@@ -513,19 +516,17 @@ else:
 
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
-                        
                         if carrier_matched_rows:
                             for row in carrier_matched_rows:
                                 p_text = str(row['Clean_Prohibited']).strip().upper()
                                 r_text = str(row['Clean_HasRemark']).strip().upper()
-                                if any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
-                                    is_any_row_prohibited = True
-                                if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
-                                    is_any_row_remarked = True
+                                if any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]): is_any_row_prohibited = True
+                                if any(k in r_text for k in ["🟡", "YES", "TRUE"]): is_any_row_remarked = True
 
                         un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
                         carrier_payload = {
-                            "sheet_name": sheet_name,
+                            "carrier_name": carrier_clean_name,
+                            "version_tag": version_tag,
                             "un_display": un_display,
                             "specific_dg_list": specific_dg_list,
                             "collapsed_list": collapsed_list,
@@ -536,64 +537,51 @@ else:
                             carrier_payload.update({"border_color": "#ef4444", "bg_badge": "#fee2e2", "text_badge": "#991b1b", "display_status": "🔴 Strictly Prohibited"})
                             red_bucket.append(carrier_payload)
                         elif is_any_row_remarked or specific_dg_list:
-                            carrier_payload.update({"border_color": "#f59e0b", "bg_badge": "#fef3c7", "text_badge": "#92400e", "display_status": "🟡 Conditional Acceptance / Review Remarks"})
+                            carrier_payload.update({"border_color": "#f59e0b", "bg_badge": "#fef3c7", "text_badge": "#92400e", "display_status": "🟡 Conditional Acceptance"})
                             yellow_bucket.append(carrier_payload)
                         else:
                             carrier_payload.update({"border_color": "#10b981", "bg_badge": "#d1fae5", "text_badge": "#065f46", "display_status": "🟢 Standard Acceptance"})
                             green_bucket.append(carrier_payload)
 
-                    # 依序渲染 綠 -> 黃 -> 紅
                     for target_bucket in [green_bucket, yellow_bucket, red_bucket]:
                         for item in target_bucket:
                             st.markdown(f"""
                                 <div class="partner-card" style="border-left-color: {item['border_color']}; margin-bottom: 5px;">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="partner-title">🏢 Carrier: {item['sheet_name']} (Ref: {item['un_display']})</span>
+                                        <span class="partner-title">
+                                            🏢 Carrier: {item['carrier_name']} 
+                                            <span class="version-badge">{item['version_tag']}</span>
+                                            <div style="font-size: 13px; color: #64748b; font-weight: normal; margin-top: 4px;">Ref: {item['un_display']}</div>
+                                        </span>
                                         <span class="status-badge" style="background-color: {item['bg_badge']}; color: {item['text_badge']};">{item['display_status']}</span>
                                     </div>
                                 </div>
                             """, unsafe_allow_html=True)
 
                             if not item['carrier_matched_rows'] and not item['specific_dg_list']:
-                                st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
+                                st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found.</div></div>', unsafe_allow_html=True)
                             else:
                                 if item['specific_dg_list']:
-                                    specific_label = f"📋 View Specific DG Remarks ({len(item['specific_dg_list'])} Items)"
-                                    with st.expander(specific_label, expanded=False):
+                                    with st.expander(f"📋 View Specific DG Remarks ({len(item['specific_dg_list'])} Items)", expanded=False):
                                         specific_html = "".join([f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>' for rem in item['specific_dg_list']])
                                         st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
-                                
                                 if item['collapsed_list']:
-                                    expander_label = f"📄 View Global / Universal DG Policies ({len(item['collapsed_list'])} Items)"
-                                    with st.expander(expander_label, expanded=False):
-                                        collapsed_html = ""
-                                        for idx, rem in enumerate(item['collapsed_list']):
-                                            header_label = f"Universal DG Policy {rem['num']}." if idx == 0 else f"{rem['num']}."
-                                            collapsed_html += f'<div class="collapsed-header">📌 {header_label}</div><div class="remark-line">{rem["text"]}</div>'
+                                    with st.expander(f"📄 View Global / Universal DG Policies ({len(item['collapsed_list'])} Items)", expanded=False):
+                                        collapsed_html = "".join([f'<div class="collapsed-header">📌 {f"Universal DG Policy {rem[\"num\"]}. " if idx==0 else f"{rem[\"num\"]}. "}</div><div class="remark-line">{rem[\"text\"]}</div>' for idx, rem in enumerate(item['collapsed_list'])])
                                         st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
-                                        
-                                if not item['specific_dg_list'] and not item['collapsed_list']:
-                                    st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
-                                        
                             st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("<br><br>", unsafe_allow_html=True)
                             
     except Exception as e:
         st.error(f"❌ File reading failed. Error message: {e}")
 
-# ==============================================================================
-# FOOTER SECTION: Copyright & Confidentiality Declaration
-# ==============================================================================
+# -------------------------------------------------------------
+# FOOTER
+# -------------------------------------------------------------
 st.markdown("""
     <div class="footer-box">
-        <div style="color: #e11d48; font-weight: bold; margin-bottom: 8px;">
-            ⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY
-        </div>
-        <div style="margin-bottom: 5px;">
-            Copyright © 2026 IAL DG TEAM. All Rights Reserved.
-        </div>
-        <div style="font-size: 13px; color: #94a3b8;">
-            Any issue and user feedback plz contact <a href="mailto:tim.lee@interasialine.com" style="color: #38bdf8; text-decoration: none; font-weight: bold;">tim.lee@interasialine.com</a> via Teams
-        </div>
+        <div style="color: #e11d48; font-weight: bold; margin-bottom: 8px;">⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY</div>
+        <div>Copyright © 2026 IAL DG TEAM. All Rights Reserved.</div>
+        <div style="font-size: 13px; color: #94a3b8;">Any issue contact <a href="mailto:tim.lee@interasialine.com" style="color: #38bdf8; text-decoration: none; font-weight: bold;">tim.lee@interasialine.com</a></div>
     </div>
     """, unsafe_allow_html=True)
