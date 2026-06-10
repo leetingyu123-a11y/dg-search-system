@@ -3,44 +3,44 @@ import random
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
-import extra_streamlit_components as stx  # 引入 Cookie 管理套件
+import extra_streamlit_components as stx  # Cookie manager
 
 # ==============================================================================
-# 設定區：發信專用的 Gmail 資訊 (請替換成您的專屬資料)
+# SETTINGS: Dedicated Gmail account for sending emails
 # ==============================================================================
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
-SENDER_EMAIL = "timbot000001@gmail.com"        # 填入發信用的 Gmail
-SENDER_PASSWORD = "kooh dutv dggo ecfm"     # 填入 16 位元的「應用程式密碼」
+SENDER_EMAIL = "timbot000001@gmail.com"     # Enter your sending Gmail
+SENDER_PASSWORD = "kooh dutv dggo ecfm"          # Enter your 16-digit App Password
 
 # ==============================================================================
-# 核心外掛：Cookie 記憶型 - 公司信箱動態驗證碼 (OTP) 24小時免驗證版 (英文信件版)
+# CORE MODULE: Cookie-Based OTP Verification (24-Hour Expiration - FIXED LOGIC)
 # ==============================================================================
 
 # 1. Initialize Cookie Manager
 cookie_manager = stx.CookieManager()
 
-# 2. Attempt to read login history from the browser within 24 hours
+# 2. Fetch cookies from browser
 auth_cookie = cookie_manager.get(cookie="sys_auth_verified")
 saved_email = cookie_manager.get(cookie="sys_auth_email")
 
-# Initialize Session State
-if "authenticated" not in st.session_state:
-    if auth_cookie == "true":
-        st.session_state.authenticated = True
-        st.session_state.user_email = saved_email if saved_email else "Authenticated User"
-    else:
+# 🚨 CRITICAL FIX: If valid cookie is detected (even if it arrives a bit late), force unlock immediately!
+if auth_cookie == "true":
+    st.session_state.authenticated = True
+    if saved_email:
+        st.session_state.user_email = saved_email
+else:
+    # Initialize session state as False ONLY IF it hasn't been set yet
+    if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
+# Initialize other required session states
 if "otp_sent" not in st.session_state:
     st.session_state.otp_sent = False
 if "real_otp" not in st.session_state:
     st.session_state.real_otp = None
 if "user_email" not in st.session_state:
-    if auth_cookie == "true" and saved_email:
-        st.session_state.user_email = saved_email
-    else:
-        st.session_state.user_email = ""
+    st.session_state.user_email = ""
 
 def send_otp_email(to_email, otp_code):
     """ Sends the security verification code via Gmail SMTP """
@@ -108,6 +108,9 @@ if not st.session_state.authenticated:
         col1, col2 = st.columns([1, 4])
         with col1:
             if st.button("Verify", type="primary"):
+                if otp_input.strip() == st.session_state.real_unlock == st.session_state.real_otp:
+                    pass  # Just a secondary check wrapper
+                
                 if otp_input.strip() == st.session_state.real_otp:
                     st.session_state.authenticated = True
                     
@@ -131,19 +134,7 @@ if not st.session_state.authenticated:
 # ==============================================================================
 # Your core "Carrier DG Restriction Query System" code resumes below...
 # ==============================================================================
-# Sidebar login status info
 st.sidebar.info(f"👤 Logged in as: {st.session_state.user_email}")
-# ==============================================================================
-# 3. 這裡以下，完全接回您原本那一長串的「船東危險品禁裝清單查詢系統」程式碼
-# ==============================================================================
-# 側邊欄加上登入者提示
-st.sidebar.info(f"👤 當前登入：{st.session_state.user_email}")
-
-# ==============================================================================
-# 3. 這裡以下，完全接回您原本那一長串的「船東危險品禁裝清單查詢系統」程式碼
-# ==============================================================================
-# 側邊欄加上登入者提示
-st.sidebar.info(f"👤 當前登入：{st.session_state.user_email}")
 # ==============================================================================
 # 3. 這裡以下，完全接回你原本那一長串的「船東危險品禁裝清單查詢系統」程式碼
 # ==============================================================================
