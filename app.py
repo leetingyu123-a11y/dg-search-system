@@ -43,7 +43,13 @@ SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 SENDER_EMAIL = "timbot000001@gmail.com"
 SENDER_PASSWORD = "kooh dutv dggo ecfm"
+# 1. 只要頁面有重新整理或點擊，就更新當前使用者的活動狀態
+# 💡 註：如果你系統有登入機制，可以把 '訪客' 換成你儲存帳號的 st.session_state 變數（例如 st.session_state.username）
+current_user = st.session_state.get('username', '訪客')
+tracker.update_activity(current_user)
 
+# 2. 在側邊欄（Sidebar）或是你喜歡的地方顯示即時人數
+st.sidebar.metric("📊 目前在線人數", f"{tracker.get_active_users(minutes=10)} 人")
 # ==============================================================================
 # CORE MODULE: Async-Safe Cookie Verification (F5 & Original URL Proof)
 # ==============================================================================
