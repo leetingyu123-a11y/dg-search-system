@@ -1,2 +1,3 @@
 pandas
 openpyxl
+extra-streamlit-components
