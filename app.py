@@ -40,7 +40,7 @@ excel_sheets = load_carrier_excel(excel_file, excel_time)
 raw_master_df = load_imdg_master(master_file, master_time)
 
 # -------------------------------------------------------------
-# 🎨 CSS STYLING (視覺樣式優化 - 包含搜尋欄極小化)
+# 🎨 CSS STYLING (徹底修復重疊並保持精緻矮版)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -80,44 +80,45 @@ st.markdown("""
         color: #64748b; border-top: 1px solid #e2e8f0; margin-top: 40px;
     }
     
-    /* 摺疊面板標題 */
     .stExpander .streamlit-expanderHeader p { margin-bottom: 0px !important; }
     .stExpander:nth-of-type(1) .streamlit-expanderHeader p { font-size: 16px !important; font-weight: 800 !important; color: #0f172a !important; }
     .stExpander:nth-of-type(2) .streamlit-expanderHeader p { font-size: 14px !important; font-weight: 600 !important; color: #64748b !important; }
 
-    /* 🌟 搜尋框主區域極小化微調 */
+    /* 🌟 精緻微型標籤（絕不重疊） */
     .search-label {
         font-size: 13px !important;
-        font-weight: bold;
-        color: #475569;
-        margin-bottom: -15px !important;
+        font-weight: 600;
+        color: #94a3b8;
+        margin-bottom: 4px !important;
+        margin-top: 5px !important;
     }
     
-    /* 讓 Streamlit 原生的輸入框、下拉選單外觀變小 */
+    /* 精緻矮版輸入框調整 */
     div[data-testid="stTextInput"] input {
         padding: 4px 10px !important;
-        height: 32px !important;
+        height: 36px !important;
         font-size: 14px !important;
     }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] {
         padding: 0px !important;
-        height: 32px !important;
+        height: 36px !important;
         font-size: 14px !important;
     }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        min-height: 32px !important;
-        height: 32px !important;
+        min-height: 36px !important;
+        height: 36px !important;
     }
     
-    /* 讓大的搜尋按鈕也變小變精緻 */
+    /* 搜尋按鈕微型化 */
     div.stButton > button[kind="primary"] {
         padding: 4px 15px !important;
-        height: 34px !important;
+        height: 36px !important;
         font-size: 14px !important;
         font-weight: bold !important;
+        margin-top: 10px !important;
     }
 
-    /* 歷史紀錄側邊欄：按鈕極小化 */
+    /* 歷史紀錄側邊欄按鈕 */
     [data-testid="stSidebar"] .stButton button {
         padding: 2px 8px !important;
         min-height: 24px !important;
@@ -152,7 +153,6 @@ def click_history(hist_un, hist_class):
     st.session_state.input_class_value = hist_class
     st.session_state.search_trigger = True
 
-# 側邊欄：摺疊收納歷史紀錄
 with st.sidebar:
     st.subheader("⚙️ Settings")
     with st.expander("⏳ Recent Search History", expanded=False):
@@ -182,8 +182,12 @@ def is_class_matching(input_cls, target_cls, exact_mode=False):
     i_cls = clean_class_string(input_cls)
     t_cls = clean_class_string(target_cls)
     if t_cls == 'ALL': return True
+    
+    # Class 1 (1.1, 1.2, 1.4 等) 必須完全精準比對，不能只看開頭是 1 就混用
+    if i_cls.startswith('1') or t_cls.startswith('1'):
+        return i_cls == t_cls
+
     if exact_mode: return i_cls == t_cls
-    if i_cls.startswith('1') and t_cls.startswith('1'): return True
     if i_cls == t_cls: return True
     if '.' in i_cls and '.' not in t_cls:
         if i_cls.split('.')[0] == t_cls: return True
@@ -210,7 +214,7 @@ def format_un_number(un_val):
     return pure_digits.zfill(4) if pure_digits else val_str
 
 # -------------------------------------------------------------
-# 🖥️ SEARCH INTERFACE (超微型化排版)
+# 🖥️ SEARCH INTERFACE
 # -------------------------------------------------------------
 if excel_sheets is None:
     st.error("❌ dg_list.xlsx not found!")
@@ -220,7 +224,6 @@ else:
         has_master = False
         if raw_master_df is not None:
             master_df = raw_master_df.copy()
-            # 強固欄位解析
             un_cols = [c for c in master_df.columns if c.lower() in ['un number', 'un', 'un號碼']]
             cls_cols = [c for c in master_df.columns if any(k in c.lower() for k in ['class', 'division', '類別'])]
             psn_cols = [c for c in master_df.columns if c.lower() in ['psn', 'proper shipping name', '品名']]
@@ -238,7 +241,7 @@ else:
                 master_df['Detected_SubRisk'] = master_df[sub_risk_col[0]] if sub_risk_col else ""
                 has_master = True
 
-        # 微型精緻三部曲欄位
+        # 乾淨不重疊的三部曲欄位
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown('<p class="search-label">1. Class / Division</p>', unsafe_allow_html=True)
@@ -251,7 +254,6 @@ else:
             st.markdown('<p class="search-label">3. Carrier Filter</p>', unsafe_allow_html=True)
             selected_partner = st.selectbox("Carrier", ["ALL CARRIERS"] + all_partners, label_visibility="collapsed")
 
-        # 點擊按鈕
         if st.button("Search Database", type="primary", use_container_width=True) or st.session_state.search_trigger:
             st.session_state.search_trigger = False
             st.session_state.input_class_value = user_input_class
@@ -289,9 +291,7 @@ else:
             if is_valid_input and not input_un:
                 matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Category Search"})
 
-            # 搜尋成功渲染與排序
             if is_valid_input and matched_master_records:
-                # 寫入歷史紀錄
                 log = {"un": input_un, "class": final_class}
                 if log not in st.session_state.history:
                     st.session_state.history.insert(0, log)
@@ -315,7 +315,6 @@ else:
                     
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
-                    # 🚀 初始化：綠、黃、紅排序桶子
                     standard_bucket = []
                     remarked_bucket = []
                     prohibited_bucket = []
@@ -348,7 +347,7 @@ else:
                         specific_dg_list = []  
                         collapsed_list = []    
 
-                        # 1. 篩選 精確 UN 規則
+                        # 1. 精確 UN 規則
                         if input_un:
                             for _, row in df[df['Clean_UN'] == input_un].iterrows():
                                 if row['Clean_Class'] and not is_class_matching(curr_cls, row['Clean_Class']): continue
@@ -361,7 +360,7 @@ else:
                                         if r_val not in [s["text"] for s in specific_dg_list]:
                                             specific_dg_list.append({"col_name": str(r_col), "text": r_val})
 
-                        # 2. 篩選 全域通則 (ALL 或 空白值)
+                        # 2. 全域通則 (ALL 或 空白值)
                         global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'] == 'ALL')]
                         universal_counter = 1
                         
@@ -386,11 +385,11 @@ else:
                                                 collapsed_list.append({"col_name": "Universal DG Policy", "text": r_val, "num": universal_counter})
                                                 universal_counter += 1
                                         else:
-                                            lbl = f"Main Class {c_res_cls} Policy" if main_hit else "Sub Risk Restriction"
+                                            lbl = f"Class {c_res_cls} Policy" if main_hit else "Sub Risk Restriction"
                                             if r_val not in [s["text"] for s in specific_dg_list]:
                                                 specific_dg_list.append({"col_name": lbl, "text": r_val})
 
-                        # 統計此船東的狀態燈號
+                        # 統計狀態燈號
                         is_any_row_prohibited = False
                         is_any_row_remarked = False
                         if carrier_matched_rows:
@@ -401,13 +400,12 @@ else:
                                 if any(k in r_txt for k in ["🟡", "YES", "TRUE"]): is_any_row_remarked = True
 
                         partner_data = {
-                            "sheet_name": sheet_name,
+                            "sheet_name": sheet,  # 🌟 這裡修正：由 sheet_name 改回正確的變數 sheet
                             "carrier_matched_rows": carrier_matched_rows,
                             "specific_dg_list": specific_dg_list,
                             "collapsed_list": collapsed_list
                         }
 
-                        # 分流到排序桶子
                         if is_any_row_prohibited:
                             prohibited_bucket.append(partner_data)
                         elif is_any_row_remarked or specific_dg_list:
@@ -415,7 +413,7 @@ else:
                         else:
                             standard_bucket.append(partner_data)
 
-                    # 🌟 渲染 Section：按 【 綠燈 -> 黃燈 -> 紅燈 】 的要求完美輸出
+                    # 渲染：綠 -> 黃 -> 紅
                     final_render_flow = [
                         ("standard", standard_bucket, "#10b981", "#d1fae5", "#065f46", "🟢 Standard Acceptance"),
                         ("remarked", remarked_bucket, "#f59e0b", "#fef3c7", "#92400e", "🟡 Conditional Acceptance / Review Remarks"),
