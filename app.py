@@ -14,7 +14,7 @@ SENDER_EMAIL = "timbot000001@gmail.com"     # Enter your sending Gmail
 SENDER_PASSWORD = "kooh dutv dggo ecfm"          # Enter your 16-digit App Password
 
 # ==============================================================================
-# CORE MODULE: Cookie-Based OTP Verification (24-Hour Expiration - FIXED LOGIC)
+# CORE MODULE: Cookie-Based OTP Verification (24-Hour Expiration - FIXED VERSION)
 # ==============================================================================
 
 # 1. Initialize Cookie Manager
@@ -24,13 +24,12 @@ cookie_manager = stx.CookieManager()
 auth_cookie = cookie_manager.get(cookie="sys_auth_verified")
 saved_email = cookie_manager.get(cookie="sys_auth_email")
 
-# 🚨 CRITICAL FIX: If valid cookie is detected (even if it arrives a bit late), force unlock immediately!
+# 3. Check authentication status
 if auth_cookie == "true":
     st.session_state.authenticated = True
     if saved_email:
         st.session_state.user_email = saved_email
 else:
-    # Initialize session state as False ONLY IF it hasn't been set yet
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
@@ -106,20 +105,10 @@ if not st.session_state.authenticated:
         otp_input = st.text_input("Enter the 6-digit verification code:", type="default", max_chars=6)
         
         col1, col2 = st.columns([1, 4])
-       with col1:
+        with col1:
             if st.button("Verify", type="primary"):
-                # 修正後的乾淨判斷式
                 if otp_input.strip() == st.session_state.real_otp:
                     st.session_state.authenticated = True
-                    
-                    # 🍪 Save verification status to browser cookie (Valid for 24 hours / 86400 seconds)
-                    cookie_manager.set("sys_auth_verified", "true", max_age=86400)
-                    cookie_manager.set("sys_auth_email", st.session_state.user_email, max_age=86400)
-                    
-                    st.success("🔓 Verification successful! Logging in...")
-                    st.rerun()
-                else:
-                    st.error("❌ Invalid verification code. Please try again.")
                     
                     # 🍪 Save verification status to browser cookie (Valid for 24 hours / 86400 seconds)
                     cookie_manager.set("sys_auth_verified", "true", max_age=86400)
@@ -137,7 +126,7 @@ if not st.session_state.authenticated:
                 
         st.caption("💡 Didn't receive the email? Check your spam folder or click 'Back / Change Email' to resend.")
     st.stop()
-    
+
 # ==============================================================================
 # Your core "Carrier DG Restriction Query System" code resumes below...
 # ==============================================================================
