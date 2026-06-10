@@ -1,9 +1,10 @@
 import streamlit as st
 import random
 import smtplib
+import time
+import secrets
 from email.mime.text import MIMEText
 from email.header import Header
-import extra_streamlit_components as stx  # Cookie manager
 
 # ==============================================================================
 # SETTINGS: Dedicated Gmail account for sending emails
@@ -14,26 +15,38 @@ SENDER_EMAIL = "timbot000001@gmail.com"     # Enter your sending Gmail
 SENDER_PASSWORD = "kooh dutv dggo ecfm"          # Enter your 16-digit App Password
 
 # ==============================================================================
-# CORE MODULE: Cookie-Based OTP Verification (24-Hour Expiration - FIXED VERSION)
+# CORE MODULE: URL Token-Based Verification (24-Hour Expiration - 100% Reliable)
 # ==============================================================================
 
-# 1. Initialize Cookie Manager
-cookie_manager = stx.CookieManager()
+# 1. Create a shared memory in the cloud server to store 24-hour active tokens
+@st.cache_resource
+def get_global_token_db():
+    return {}  # Format: { "random_token_str": {"email": "...", "expires_at": timestamp} }
 
-# 2. Fetch cookies from browser
-auth_cookie = cookie_manager.get(cookie="sys_auth_verified")
-saved_email = cookie_manager.get(cookie="sys_auth_email")
+token_db = get_global_token_db()
 
-# 3. Check authentication status
-if auth_cookie == "true":
-    st.session_state.authenticated = True
-    if saved_email:
-        st.session_state.user_email = saved_email
-else:
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
+# 2. Automatically clean up expired tokens to save memory
+current_timestamp = time.time()
+expired_tokens = [t for t, data in token_db.items() if current_timestamp > data["expires_at"]]
+for t in expired_tokens:
+    del token_db[t]
 
-# Initialize other required session states
+# 3. Check if a valid Fast-Pass Token exists in the current URL
+if "token" in st.query_params:
+    url_token = st.query_params["token"]
+    if url_token in token_db:
+        # Check if the token is still valid within 24 hours
+        if current_timestamp <= token_db[url_token]["expires_at"]:
+            st.session_state.authenticated = True
+            st.session_state.user_email = token_db[url_token]["email"]
+        else:
+            # Token expired
+            st.toast("⚠️ Your 24-hour fast pass has expired. Please re-verify.", icon="⏳")
+            st.query_params.clear()
+
+# Initialize session state variables if not present
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 if "otp_sent" not in st.session_state:
     st.session_state.otp_sent = False
 if "real_otp" not in st.session_state:
@@ -47,8 +60,7 @@ def send_otp_email(to_email, otp_code):
         f"Dear Colleague,\n\n"
         f"You are attempting to log in to the Carrier DG Restriction Query System.\n"
         f"Your security verification code is: 【 {otp_code} 】\n\n"
-        f"Please enter this code on the webpage to complete your identity verification. "
-        f"The verification code is valid until the browser tab is closed.\n\n"
+        f"Please enter this code on the webpage to complete your identity verification.\n\n"
         f"Security Notice: Please do not share this verification code with external personnel."
     )
     
@@ -84,7 +96,7 @@ if not st.session_state.authenticated:
         if st.button("Send Verification Code", type="primary"):
             clean_email = email_input.strip().lower()
             
-            # 🔒 Access Control: Only allow designated company domain
+            # 🔒 Access Control
             ALLOWED_DOMAINS = ("@interasialine.com",)
             
             if not clean_email.endswith(ALLOWED_DOMAINS):
@@ -110,9 +122,15 @@ if not st.session_state.authenticated:
                 if otp_input.strip() == st.session_state.real_otp:
                     st.session_state.authenticated = True
                     
-                    # 🍪 Save verification status to browser cookie (Valid for 24 hours / 86400 seconds)
-                    cookie_manager.set("sys_auth_verified", "true", max_age=86400)
-                    cookie_manager.set("sys_auth_email", st.session_state.user_email, max_age=86400)
+                    # 🔑 Generate a secure 24-hour token and register it in the server memory
+                    fast_pass_token = secrets.token_hex(12)
+                    token_db[fast_pass_token] = {
+                        "email": st.session_state.user_email,
+                        "expires_at": time.time() + 86400  # Valid for exactly 24 hours
+                    }
+                    
+                    # 🌐 Inject the token into the browser URL bar
+                    st.query_params["token"] = fast_pass_token
                     
                     st.success("🔓 Verification successful! Logging in...")
                     st.rerun()
