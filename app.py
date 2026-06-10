@@ -17,18 +17,16 @@ if not os.path.exists(master_file):
     master_file = os.path.join("DG_System", "imdg_master.xlsx")
 
 # -------------------------------------------------------------
-# ⚡ STREAMLIT CACHE DATA FUNCTIONS (雲端環境優化版快取)
+# ⚡ STREAMLIT CACHE DATA FUNCTIONS (快取加速)
 # -------------------------------------------------------------
 @st.cache_data
 def load_carrier_excel(file_path, file_timestamp):
-    """讀取並載入船東 DG 限制清單 (dg_list.xlsx)"""
     if os.path.exists(file_path):
         return pd.read_excel(file_path, sheet_name=None)
     return None
 
 @st.cache_data
 def load_imdg_master(file_path, file_timestamp):
-    """讀取並載入官方 IMDG Master 數據庫 (imdg_master.xlsx)"""
     if os.path.exists(file_path):
         df = pd.read_excel(file_path, dtype=str)
         df.columns = df.columns.astype(str).str.strip()
@@ -40,100 +38,71 @@ master_time = os.path.getmtime(master_file) if os.path.exists(master_file) else 
 
 excel_sheets = load_carrier_excel(excel_file, excel_time)
 raw_master_df = load_imdg_master(master_file, master_time)
-# -------------------------------------------------------------
 
-# CSS 樣式注入
+# -------------------------------------------------------------
+# 🎨 CSS STYLING (視覺樣式優化)
+# -------------------------------------------------------------
 st.markdown("""
     <style>
     .psn-card {
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        background: linear-gradient(135deg, #1e3a8a, #3b82f6);
-        color: white;
+        padding: 20px; border-radius: 10px; margin-bottom: 20px;
+        background: linear-gradient(135deg, #1e3a8a, #3b82f6); color: white;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .partner-card {
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 15px;
-        border-left: 8px solid #cbd5e1;
-        background-color: #f8fafc;
+        padding: 20px; border-radius: 10px; margin-bottom: 15px;
+        border-left: 8px solid #cbd5e1; background-color: #f8fafc;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     .status-badge {
-        font-size: 20px !important;
-        font-weight: bold;
-        padding: 4px 12px;
-        border-radius: 5px;
-        display: inline-block;
-        margin-bottom: 0px;
+        font-size: 20px !important; font-weight: bold; padding: 4px 12px;
+        border-radius: 5px; display: inline-block;
     }
     .remark-box {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 6px;
-        border: 1px solid #e2e8f0;
-        margin-top: 8px;
-        margin-bottom: 8px;
+        background-color: #ffffff; padding: 15px; border-radius: 6px;
+        border: 1px solid #e2e8f0; margin-top: 8px; margin-bottom: 8px;
     }
     .remark-line {
-        font-size: 20px !important; 
-        line-height: 1.6;
-        color: #1e293b;
-        font-weight: 500;
-        margin-bottom: 12px;
-        white-space: pre-wrap; 
+        font-size: 20px !important; line-height: 1.6; color: #1e293b;
+        font-weight: 500; margin-bottom: 12px; white-space: pre-wrap; 
     }
     .remark-header {
-        font-size: 14px !important;
-        color: #0284c7;
-        font-weight: bold;
-        margin-top: 6px;
+        font-size: 14px !important; color: #0284c7; font-weight: bold; margin-top: 6px;
     }
     .collapsed-header {
-        font-size: 14px !important;
-        color: #64748b;
-        font-weight: bold;
-        margin-top: 6px;
+        font-size: 14px !important; color: #64748b; font-weight: bold; margin-top: 6px;
     }
     .partner-title {
-        font-size: 26px !important;
-        font-weight: bold;
-        color: #0f172a;
+        font-size: 26px !important; font-weight: bold; color: #0f172a;
     }
     .footer-box {
-        text-align: center;
-        padding: 30px 0px 10px 0px;
-        font-size: 14px;
-        color: #64748b;
-        font-weight: 500;
-        border-top: 1px solid #e2e8f0;
-        margin-top: 50px;
+        text-align: center; padding: 30px 0px 10px 0px; font-size: 14px;
+        color: #64748b; border-top: 1px solid #e2e8f0; margin-top: 50px;
     }
     
-    .streamlit-expanderHeader {
-        background-color: #f1f5f9 !important;
-        border-radius: 6px !important;
+    /* 摺疊面板標題優化 */
+    .stExpander .streamlit-expanderHeader p {
+        margin-bottom: 0px !important;
     }
-
     .stExpander:nth-of-type(1) .streamlit-expanderHeader p {
-        font-size: 19px !important;       
-        font-weight: 800 !important;       
-        color: #0f172a !important;         
+        font-size: 19px !important; font-weight: 800 !important; color: #0f172a !important;
+    }
+    .stExpander:nth-of-type(2) .streamlit-expanderHeader p {
+        font-size: 15px !important; font-weight: 600 !important; color: #64748b !important;
     }
 
-    .stExpander:nth-of-type(2) .streamlit-expanderHeader p {
-        font-size: 15px !important;       
-        font-weight: 600 !important;       
-        color: #64748b !important;         
-    }
-    
-    /* 歷史紀錄側邊欄按鈕視覺微調 */
-    .stSidebar .stButton>button {
-        text-align: left !important;
-        justify-content: flex-start !important;
-        font-size: 14px !important;
+    /* 🌟 歷史紀錄側邊欄：按鈕極小化 CSS */
+    [data-testid="stSidebar"] .stButton button {
+        padding: 2px 8px !important;
+        min-height: 24px !important;
+        height: 24px !important;
+        font-size: 12px !important;
+        margin-bottom: 2px !important;
+        border-radius: 4px !important;
+        background-color: #f1f5f9 !important;
+        color: #475569 !important;
+        border: 1px solid #e2e8f0 !important;
+        line-height: 1.2 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -141,198 +110,112 @@ st.markdown("""
 st.title("🚢 Carrier DG Prohibited List Query System")
 
 # -------------------------------------------------------------
-# 🛠️ SESSION STATE & HISTORY LOGIC (歷史紀錄與防呆機制)
+# ⏳ SESSION STATE & HISTORY LOGIC
 # -------------------------------------------------------------
 if "history" not in st.session_state:
     st.session_state.history = []
-
 if "search_trigger" not in st.session_state:
     st.session_state.search_trigger = False
-
-# 初始化輸入框的預設值暫存器
 if "input_un_value" not in st.session_state:
     st.session_state.input_un_value = ""
 if "input_class_value" not in st.session_state:
     st.session_state.input_class_value = ""
 
-# 點擊歷史紀錄時的觸發函式
 def click_history(hist_un, hist_class):
     st.session_state.input_un_value = hist_un
     st.session_state.input_class_value = hist_class
     st.session_state.search_trigger = True
 
-# 側邊欄：歷史查詢紀錄介面
+# 側邊欄改版：使用摺疊區收納歷史紀錄，使其不顯眼
 with st.sidebar:
-    st.markdown("## ⏳ Search History")
-    if not st.session_state.history:
-        st.caption("No recent searches yet.")
-    else:
-        st.markdown("依序顯示最近 5 筆查詢，點擊可直接重查：")
-        for idx, item in enumerate(st.session_state.history):
-            label_text = f"📋 UN {item['un']} [Class {item['class']}]" if item['un'] else f"📋 Class {item['class']} (Global)"
-            st.button(
-                label_text, 
-                key=f"hist_btn_{idx}", 
-                on_click=click_history, 
-                args=(item['un'], item['class']),
-                use_container_width=True
-            )
-        
-        if st.button("🗑️ Clear History", use_container_width=True, type="secondary"):
-            st.session_state.history = []
-            st.rerun()
+    st.subheader("⚙️ Settings")
+    with st.expander("⏳ Recent Search History", expanded=False): # 預設關閉，更隱蔽
+        if not st.session_state.history:
+            st.caption("No history.")
+        else:
+            for idx, item in enumerate(st.session_state.history):
+                lbl = f"UN{item['un']} [C{item['class']}]" if item['un'] else f"C{item['class']} (Glob)"
+                st.button(lbl, key=f"h_{idx}", on_click=click_history, args=(item['un'], item['class']), use_container_width=True)
+            if st.button("🗑️ Clear All", use_container_width=True):
+                st.session_state.history = []
+                st.rerun()
 
 # -------------------------------------------------------------
-# 🧼 DATA CLEANING & MATCHING FUNCTIONS
+# 🧼 CLEANING & MATCHING FUNCTIONS
 # -------------------------------------------------------------
 def clean_class_string(class_val):
-    if pd.isna(class_val):
-        return ""
-    # 🌟 防呆：利用 unicodedata 把萬惡的全形數字轉成半形
+    if pd.isna(class_val): return ""
     val_str = unicodedata.normalize('NFKC', str(class_val)).strip().upper()
-    if 'ALL' in val_str:
-        return 'ALL'
-    if val_str.endswith('.0'):
-        val_str = val_str[:-2]
+    if 'ALL' in val_str: return 'ALL'
+    if val_str.endswith('.0'): val_str = val_str[:-2]
     match = re.search(r'[0-9]+(?:\.[0-9]+)?', val_str)
     return match.group(0) if match else val_str
 
 def is_class_matching(input_cls, target_cls, exact_mode=False):
-    if not input_cls or not target_cls:
-        return False
-    input_cls = clean_class_string(input_cls)
-    target_cls = clean_class_string(target_cls)
-    
-    if target_cls == 'ALL':
-        return True
-        
-    if exact_mode:
-        return input_cls == target_cls
-
-    if input_cls.startswith('1') and target_cls.startswith('1'):
-        return True
-    if input_cls == target_cls:
-        return True
-    if '.' in input_cls and '.' not in target_cls:
-        if input_cls.split('.')[0] == target_cls:
-            return True
-    if '.' not in input_cls and '.' in target_cls:
-        if target_cls.split('.')[0] == input_cls:
-            return True
+    if not input_cls or not target_cls: return False
+    i_cls = clean_class_string(input_cls)
+    t_cls = clean_class_string(target_cls)
+    if t_cls == 'ALL': return True
+    if exact_mode: return i_cls == t_cls
+    if i_cls.startswith('1') and t_cls.startswith('1'): return True
+    if i_cls == t_cls: return True
+    if '.' in i_cls and '.' not in t_cls:
+        if i_cls.split('.')[0] == t_cls: return True
+    if '.' not in i_cls and '.' in t_cls:
+        if t_cls.split('.')[0] == i_cls: return True
     return False
 
 def extract_subrisks_for_matching(subrisk_val):
-    if pd.isna(subrisk_val):
-        return []
+    if pd.isna(subrisk_val): return []
     val_str = str(subrisk_val).strip()
     tokens = val_str.replace('/', ' ').replace(',', ' ').replace('、', ' ').split()
-    cleaned_tokens = []
-    for t in tokens:
-        cleaned = clean_class_string(t)
-        if cleaned:
-            cleaned_tokens.append(cleaned)
-        elif t.strip() == "P":
-            cleaned_tokens.append("P")
-    return cleaned_tokens
+    return [clean_class_string(t) for t in tokens if clean_class_string(t) or t.strip()=="P"]
 
 def format_subrisk_display(subrisk_val):
-    if pd.isna(subrisk_val):
-        return ""
+    if pd.isna(subrisk_val): return ""
     val_str = str(subrisk_val).strip()
-    if val_str.lower() == 'nan' or val_str == "":
-        return ""
-    formatted = re.sub(r'\bP\b', 'Marine Pollutant (MP)', val_str)
-    return formatted
+    return re.sub(r'\bP\b', 'Marine Pollutant (MP)', val_str) if val_str.lower()!='nan' else ""
 
 def format_un_number(un_val):
-    if pd.isna(un_val):
-        return ""
-    if isinstance(un_val, float):
-        if un_val.is_integer():
-            un_val = int(un_val)
-    
-    # 🌟 防呆：先把全形轉半形，並用正規表達式把所有不是數字的怪字（如 UN, u.n., 空格）全濾掉
+    if pd.isna(un_val): return ""
     val_str = unicodedata.normalize('NFKC', str(un_val)).strip()
-    if val_str.upper() == 'ALL' or val_str == '':
-        return 'ALL'
-        
+    if val_str.upper() == 'ALL' or val_str == '': return 'ALL'
     pure_digits = re.sub(r'[^0-9]', '', val_str)
-    if pure_digits:
-        return pure_digits.zfill(4)
-        
-    return val_str
+    return pure_digits.zfill(4) if pure_digits else val_str
 
 # -------------------------------------------------------------
-# 🖥️ INTERFACE LAYOUT (查詢主畫面)
+# 🖥️ SEARCH INTERFACE
 # -------------------------------------------------------------
 if excel_sheets is None:
-    st.error("❌ CRITICAL ERROR: dg_list.xlsx not found!")
+    st.error("❌ dg_list.xlsx not found!")
 else:
     try:
-        all_partners = [sheet for sheet in excel_sheets.keys() if not (sheet.startswith("Sheet") and excel_sheets[sheet].empty)]
+        all_partners = [s for s in excel_sheets.keys() if not (s.startswith("Sheet") and excel_sheets[s].empty)]
         has_master = False
-        
         if raw_master_df is not None:
-            try:
-                master_df = raw_master_df.copy()
-                if 'UN Number' in master_df.columns or 'UN' in master_df.columns:
-                    un_col = [c for c in master_df.columns if c.lower() in ['un number', 'un', 'un號碼']][0]
-                    cls_col = [c for c in master_df.columns if any(k in c.lower() for k in ['class', 'division', '類別'])][0]
-                    
-                    master_df['UN Number'] = master_df[un_col].apply(format_un_number)
-                    master_df['Class'] = master_df[cls_col].apply(clean_class_string)
-                    
-                    sub_risk_col_name = None
-                    for col in master_df.columns:
-                        if col.lower() in ['sub risk', 'subrisk', '次要風險', 'subsidiary risk']:
-                            sub_risk_col_name = col
-                            break
-                    
-                    if sub_risk_col_name:
-                        master_df['Detected_SubRisk'] = master_df[sub_risk_col_name]
-                    else:
-                        master_df['Detected_SubRisk'] = ""
-                        
-                    has_master = True
-            except Exception as e:
-                st.warning(f"⚠️ Warning: imdg_master.xlsx database failed to load. Error: {e}")
+            master_df = raw_master_df.copy()
+            if any(k in master_df.columns for k in ['UN', 'Class']):
+                un_col = [c for c in master_df.columns if c.lower() in ['un number', 'un']][0]
+                cls_col = [c for c in master_df.columns if 'class' in c.lower() or '類別' in c.lower()][0]
+                master_df['UN Number'] = master_df[un_col].apply(format_un_number)
+                master_df['Class'] = master_df[cls_col].apply(clean_class_string)
+                master_df['Detected_SubRisk'] = master_df[[c for c in master_df.columns if 'sub' in c.lower()][0]] if any('sub' in c.lower() for c in master_df.columns) else ""
+                has_master = True
 
-        # 使用三個欄位排版輸入介面
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown("### 1. Enter Class / Division")
-            user_input_class = st.text_input(
-                "Class Input", 
-                value=st.session_state.input_class_value,
-                placeholder="e.g., 1, 2.3, 3", 
-                label_visibility="collapsed"
-            ).strip()
+            st.markdown("### 1. Class")
+            user_input_class = st.text_input("Class", value=st.session_state.input_class_value, placeholder="1, 3, etc", label_visibility="collapsed").strip()
         with col2:
-            st.markdown("### 2. Enter UN Number")
-            raw_input_un = st.text_input(
-                "UN Number Input", 
-                value=st.session_state.input_un_value,
-                placeholder="e.g., 0005, 1950, 2430", 
-                label_visibility="collapsed"
-            ).strip()
-            
-            # 即時處理防呆清洗
+            st.markdown("### 2. UN Number")
+            raw_input_un = st.text_input("UN", value=st.session_state.input_un_value, placeholder="0066, 1950", label_visibility="collapsed").strip()
             input_un = format_un_number(raw_input_un) if raw_input_un else ""
-            if input_un == 'ALL': 
-                input_un = ""
         with col3:
-            st.markdown("### 3. Filter by Carrier")
-            partner_options = ["ALL CARRIERS"] + all_partners
-            selected_partner = st.selectbox("Partner Filter", partner_options, label_visibility="collapsed")
+            st.markdown("### 3. Carrier")
+            selected_partner = st.selectbox("Carrier", ["ALL CARRIERS"] + all_partners, label_visibility="collapsed")
 
-        # 搜尋發動條件：點擊按鈕 OR 點擊歷史紀錄觸發
-        search_clicked = st.button("Search Database", type="primary", use_container_width=True)
-        
-        if search_clicked or st.session_state.search_trigger:
-            # 重置觸發器狀態
+        if st.button("Search Database", type="primary", use_container_width=True) or st.session_state.search_trigger:
             st.session_state.search_trigger = False
-            
-            # 同步將當前輸入值寫入快取，確保重新渲染時文字不會消失
             st.session_state.input_class_value = user_input_class
             st.session_state.input_un_value = raw_input_un
             
@@ -340,293 +223,123 @@ else:
             is_valid_input = True
             matched_master_records = []
             
-            MULTI_CLASS_UNS = ["1950", "2037"]
-            
-            if input_un in MULTI_CLASS_UNS and not final_class:
-                st.error(f"❌ INTERCEPT WARNING: UN {input_un} contains multiple regulatory classifications (e.g., 2.1/2.2/2.3). You MUST enter the 'Class / Division' field to perform this search!")
+            # 驗證邏輯
+            if input_un in ["1950", "2037"] and not final_class:
+                st.error("❌ UN 1950/2037 requires Class Input.")
                 is_valid_input = False
-                
-            if is_valid_input and not input_un and not final_class:
-                st.warning("⚠️ Action Required: Please enter at least a UN Number or a Class/Division to perform search.")
+            elif not input_un and not final_class:
+                st.warning("⚠️ Enter UN or Class.")
                 is_valid_input = False
-                
-            if is_valid_input and final_class and final_class != 'ALL':
-                cleaned_num_str = clean_class_string(final_class)
-                try:
-                    class_num = float(cleaned_num_str)
-                    if class_num < 1.0 or class_num >= 10.0:
-                        st.error("❌ Input Error: IMDG Code Dangerous Goods Classes only range from 1 to 9.")
-                        is_valid_input = False
-                except ValueError:
-                    st.error("⚠️ Invalid Format: Class parameters must be numeric numbers.")
-                    is_valid_input = False
 
             if is_valid_input and input_un and has_master:
                 un_exists = master_df[master_df['UN Number'] == input_un]
                 if un_exists.empty:
-                    st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in the official IMDG Code Master Database!")
+                    st.error(f"❌ UN {input_un} not in Master DB.")
                     is_valid_input = False
                 else:
-                    unique_un_exists = un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk', 'PSN'])
-                    
-                    for _, master_row in unique_un_exists.iterrows():
-                        db_class = clean_class_string(master_row['Class'])
-                        db_subrisk = str(master_row['Detected_SubRisk']).strip() if pd.notna(master_row['Detected_SubRisk']) else ""
-                        db_psn = str(master_row['PSN']).strip() if 'PSN' in master_row else ""
-                        
-                        if not final_class or final_class == 'ALL':
-                            matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
-                        else:
-                            if is_class_matching(final_class, db_class):
-                                matched_master_records.append({"class": db_class, "sub_risk": db_subrisk, "psn": db_psn})
-                    
-                    if not matched_master_records and final_class and final_class != 'ALL':
-                        clean_listed_classes = [clean_class_string(c) for c in un_exists['Class'].tolist()]
-                        st.error(f"❌ Mismatch Warning: Official IMDG lists UN {input_un} under Class `{clean_listed_classes}`.")
+                    unique_un = un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk'])
+                    for _, m_row in unique_un.iterrows():
+                        if not final_class or is_class_matching(final_class, m_row['Class']):
+                            matched_master_records.append({"class": m_row['Class'], "sub_risk": m_row['Detected_SubRisk'], "psn": m_row.get('PSN','')})
+                    if not matched_master_records:
+                        st.error("❌ Mismatch Class/UN.")
                         is_valid_input = False
-                    elif not final_class and len(matched_master_records) > 1:
-                        st.info(f"💡 Multi-Category Alert: UN {input_un} contains {len(matched_master_records)} distinct regulatory classifications.")
 
-            if is_valid_input and not input_un and final_class:
-                matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Category Search"})
+            if is_valid_input and not input_un:
+                matched_master_records.append({"class": final_class, "sub_risk": "", "psn": "Generic Search"})
 
-            # 成功查到資料，將此條件塞入 Session 歷史紀錄 (最多保存 5 筆最新不重複)
             if is_valid_input and matched_master_records:
-                current_search_log = {"un": input_un, "class": final_class}
-                if current_search_log not in st.session_state.history:
-                    st.session_state.history.insert(0, current_search_log)
-                    if len(st.session_state.history) > 5:
-                        st.session_state.history.pop()
+                # 紀錄歷史
+                log = {"un": input_un, "class": final_class}
+                if log not in st.session_state.history:
+                    st.session_state.history.insert(0, log)
+                    st.session_state.history = st.session_state.history[:5]
                 
                 st.markdown("---")
-                
-                for record in matched_master_records:
-                    current_class = clean_class_string(record["class"])
-                    raw_subrisk = record["sub_risk"]
-                    current_psn = record["psn"]
+                for rec in matched_master_records:
+                    curr_cls = clean_class_string(rec["class"])
+                    curr_psn = rec["psn"]
+                    m_subrisk_list = extract_subrisks_for_matching(rec["sub_risk"])
                     
-                    master_subrisk_list = extract_subrisks_for_matching(raw_subrisk)
-                    display_subrisk_text = format_subrisk_display(raw_subrisk)
-                    subrisk_display = f" (Sub Risk: {display_subrisk_text})" if display_subrisk_text else ""
-                    
-                    if input_un and current_psn:
-                        st.markdown(f"""
-                            <div class="psn-card">
-                                <div style="font-size: 16px; opacity: 0.8; font-weight: bold; margin-bottom: 5px;">🌍 IMDG Code Regulatory Identification:</div>
-                                <div style="font-size: 28px; font-weight: bold; line-height: 1.3;">UN {input_un} - {current_psn}</div>
-                                <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Official Classification: Class {current_class}{subrisk_display}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
+                    if input_un and curr_psn:
+                        st.markdown(f'<div class="psn-card"><div style="font-size: 28px; font-weight: bold;">UN {input_un} - {curr_psn}</div><div>Class {curr_cls}</div></div>', unsafe_allow_html=True)
                     
                     search_targets = all_partners if selected_partner == "ALL CARRIERS" else [selected_partner]
                     
-                    # 🌟 核心優化：建立燈號分類桶，用來實現「紅燈置頂」排版
-                    prohibited_bucket = []
-                    remarked_bucket = []
-                    standard_bucket = []
-                    
-                    for sheet_name in search_targets:
-                        df = excel_sheets[sheet_name].copy()
+                    # 排序桶子
+                    prohibited_bucket, remarked_bucket, standard_bucket = [], [], []
+
+                    for sheet in search_targets:
+                        df = excel_sheets[sheet].copy()
                         df.columns = df.columns.astype(str).str.strip()
+                        cols = {('UN' if 'un' in c.lower() else 'Class' if 'class' in c.lower() else 'Prohibited' if 'prohibit' in c.lower() or 'status' in c.lower() else 'HasRemark' if 'has' in c.lower() else 'SubRisk' if 'sub' in c.lower() else ''): c for c in df.columns}
+                        cols = {k: v for k, v in cols.items() if k}
                         
-                        col_mapping = {}
-                        for c in df.columns:
-                            c_lower = c.lower().replace(" ", "").replace("/", "").replace("_", "")
-                            if 'un' in c_lower: col_mapping['UN'] = c
-                            if 'class' in c_lower or 'division' in c_lower or '類別' in c_lower: col_mapping['Class'] = c
-                            if 'prohibit' in c_lower or '狀態' in c_lower or 'status' in c_lower: col_mapping['Prohibited'] = c
-                            if 'remark' in c_lower and ('has' in c_lower or '狀態' in c_lower): col_mapping['HasRemark'] = c
-                            if 'subrisk' in c_lower or '次要' in c_lower or 'subsidiary' in c_lower: col_mapping['SubRisk'] = c
+                        df['Clean_UN'] = df[cols['UN']].fillna('ALL').apply(format_un_number)
+                        df['Clean_Class'] = df[cols['Class']].apply(clean_class_string)
+                        df['Clean_Prohibited'] = df[cols['Prohibited']].fillna('').astype(str).str.upper()
                         
-                        if 'UN' not in col_mapping or 'Class' not in col_mapping or 'Prohibited' not in col_mapping:
-                            st.error(f"⚠️ Sheet `{sheet_name}` structure error. Column resolution failed.")
-                            continue
-                        
-                        remark_cols = [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制', '條件', '敘述'])]
-                        
-                        df['Clean_UN'] = df[col_mapping['UN']].fillna('ALL').apply(format_un_number)
-                        df['Clean_Class'] = df[col_mapping['Class']].apply(clean_class_string)
-                        df['Clean_Prohibited'] = df[col_mapping['Prohibited']].fillna('').astype(str).str.strip().str.upper()
-                        df['Clean_HasRemark'] = df[col_mapping['HasRemark']].fillna('').astype(str).str.strip().str.upper() if 'HasRemark' in col_mapping else ""
-                        df['Clean_SubRisk'] = df[col_mapping['SubRisk']].fillna('').astype(str).str.strip().apply(clean_class_string) if 'SubRisk' in col_mapping else ""
+                        matched_rows = []
+                        spec_rem, glob_rem = [], []
 
-                        carrier_matched_rows = []
-                        specific_dg_list = []  
-                        collapsed_list = []    
-
-                        # 1. Check Exact UN Matches First
+                        # 1. Exact UN
                         if input_un:
-                            exact_matches = df[df['Clean_UN'] == input_un]
-                            for _, row in exact_matches.iterrows():
-                                carrier_cls = row['Clean_Class']
-                                carrier_subrisk = row['Clean_SubRisk']
-                                
-                                if carrier_cls and not is_class_matching(current_class, carrier_cls):
-                                    continue
-                                if carrier_subrisk and master_subrisk_list:
-                                    if carrier_subrisk not in master_subrisk_list:
-                                        continue
-                                carrier_matched_rows.append(row)
-                                
-                                if 'HasRemark' in col_mapping and str(row[col_mapping['HasRemark']]).strip():
-                                    hr_val = str(row[col_mapping['HasRemark']]).strip()
-                                    if hr_val and hr_val.lower() != 'nan' and hr_val.upper() not in ["YES", "TRUE"] and hr_val not in [c["text"] for c in specific_dg_list]:
-                                        specific_dg_list.append({"col_name": "Has Remark", "text": hr_val})
-                                
-                                for r_col in remark_cols:
-                                    if 'HasRemark' in col_mapping and r_col == col_mapping['HasRemark']:
-                                        continue
-                                    r_val = str(row[r_col]).strip()
-                                    if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        if r_val not in [c["text"] for c in specific_dg_list]:
-                                            specific_dg_list.append({"col_name": str(r_col), "text": r_val})
-
-                        # 2. Check Global Policy Rules
-                        global_lines = df[(df['Clean_UN'] == '') | (df['Clean_UN'].str.upper() == 'ALL')]
-                        universal_counter = 1
+                            for _, r in df[df['Clean_UN'] == input_un].iterrows():
+                                if is_class_matching(curr_cls, r['Clean_Class']): matched_rows.append(r)
                         
-                        for _, g_row in global_lines.iterrows():
-                            carrier_restricted_cls = g_row['Clean_Class']
-                            is_exact = True if (carrier_restricted_cls and carrier_restricted_cls != 'ALL') else False
-                            main_class_hit = is_class_matching(current_class, carrier_restricted_cls, exact_mode=is_exact)
-                            
-                            sub_risk_hit = False
-                            hit_subrisk_val = ""
-                            if master_subrisk_list and carrier_restricted_cls:
-                                for sr in master_subrisk_list:
-                                    if sr != "P" and is_class_matching(sr, carrier_restricted_cls, exact_mode=is_exact):
-                                        sub_risk_hit = True
-                                        hit_subrisk_val = sr
-                                        break
-                            
-                            if main_class_hit or sub_risk_hit:
-                                carrier_matched_rows.append(g_row)
-                                
-                                for r_col in remark_cols:
-                                    r_val = str(g_row[r_col]).strip()
-                                    if r_val and r_val.lower() != 'nan' and r_val != '':
-                                        if carrier_restricted_cls == 'ALL':
-                                            if r_val not in [c["text"] for c in collapsed_list]:
-                                                collapsed_list.append({
-                                                    "col_name": "Universal DG Policy",
-                                                    "text": r_val,
-                                                    "num": universal_counter
-                                                })
-                                                universal_counter += 1
+                        # 2. Global Policy
+                        u_count = 1
+                        for _, gr in df[(df['Clean_UN'] == '') | (df['Clean_UN'] == 'ALL')].iterrows():
+                            is_ex = (gr['Clean_Class'] and gr['Clean_Class'] != 'ALL')
+                            if is_class_matching(curr_cls, gr['Clean_Class'], exact_mode=is_ex):
+                                matched_rows.append(gr)
+                                for cname in [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制'])]:
+                                    val = str(gr[cname]).strip()
+                                    if val and val.lower()!='nan' and val!='':
+                                        if gr['Clean_Class'] == 'ALL':
+                                            glob_rem.append({"num": u_count, "text": val}); u_count += 1
                                         else:
-                                            label = f"Main Class {carrier_restricted_cls} Policy" if main_class_hit else f"Sub Risk '{hit_subrisk_val}' Restriction"
-                                            if r_val not in [c["text"] for c in specific_dg_list]:
-                                                specific_dg_list.append({"col_name": label, "text": r_val})
+                                            spec_rem.append({"col_name": f"Class {gr['Clean_Class']} Policy", "text": val})
 
-                        # 3. 統計狀態燈號
-                        is_any_row_prohibited = False
-                        is_any_row_remarked = False
+                        # 重新掃描特定備註 (針對 Exact UN)
+                        if input_un:
+                            for _, r in df[df['Clean_UN'] == input_un].iterrows():
+                                if is_class_matching(curr_cls, r['Clean_Class']):
+                                    for cname in [c for c in df.columns if any(k in c.lower() for k in ['remark', '備註', '限制'])]:
+                                        val = str(r[cname]).strip()
+                                        if val and val.lower()!='nan' and val.upper() not in ["YES","TRUE"]:
+                                            spec_rem.append({"col_name": cname, "text": val})
+
+                        # 燈號判定
+                        is_pro = any(any(k in str(r['Clean_Prohibited']) for k in ["🔴", "禁收", "YES", "PROHIBITED"]) for r in matched_rows)
+                        p_data = {"name": sheet, "spec": spec_rem, "glob": glob_rem, "has_match": len(matched_rows)>0}
                         
-                        if carrier_matched_rows:
-                            for row in carrier_matched_rows:
-                                p_text = str(row['Clean_Prohibited']).strip().upper()
-                                r_text = str(row['Clean_HasRemark']).strip().upper()
-                                if any(k in p_text for k in ["🔴", "禁收", "YES", "PROHIBITED"]):
-                                    is_any_row_prohibited = True
-                                if any(k in r_text for k in ["🟡", "YES", "TRUE"]):
-                                    is_any_row_remarked = True
+                        if is_pro: prohibited_bucket.append(p_data)
+                        elif spec_rem: remarked_bucket.append(p_data)
+                        else: standard_bucket.append(p_data)
 
-                        # 決定此船東最終燈號，並打包丟進對應的排序桶中
-                        partner_data = {
-                            "sheet_name": sheet_name,
-                            "carrier_matched_rows": carrier_matched_rows,
-                            "specific_dg_list": specific_dg_list,
-                            "collapsed_list": collapsed_list
-                        }
-
-                        if is_any_row_prohibited:
-                            prohibited_bucket.append(partner_data)
-                        elif is_any_row_remarked or specific_dg_list:
-                            remarked_bucket.append(partner_data)
-                        else:
-                            standard_bucket.append(partner_data)
-
-                    # 🌟 渲染 Section：按照【紅燈 -> 黃燈 -> 綠燈】的順序輸出到畫面上
-                    sorted_render_list = (
-                        [("prohibited", item) for item in prohibited_bucket] +
-                        [("remarked", item) for item in remarked_bucket] +
-                        [("standard", item) for item in standard_bucket]
-                    )
-
-                    un_display = f"UN {input_un} (Class {current_class})" if input_un else f"Class {current_class} Universal Policy"
+                    # 🌟 渲染順序：綠 -> 黃 -> 紅
+                    final_render = [("🟢 Standard", standard_bucket, "#10b981", "#d1fae5", "#065f46"), 
+                                    ("🟡 Conditional", remarked_bucket, "#f59e0b", "#fef3c7", "#92400e"), 
+                                    ("🔴 Prohibited", prohibited_bucket, "#ef4444", "#fee2e2", "#991b1b")]
                     
-                    for status_type, item in sorted_render_list:
-                        sheet_name = item["sheet_name"]
-                        specific_dg_list = item["specific_dg_list"]
-                        collapsed_list = item["collapsed_list"]
-                        carrier_matched_rows = item["carrier_matched_rows"]
-                        
-                        if status_type == "prohibited":
-                            border_color = "#ef4444"; bg_badge = "#fee2e2"; text_badge = "#991b1b"
-                            display_status = "🔴 Strictly Prohibited"
-                        elif status_type == "remarked":
-                            border_color = "#f59e0b"; bg_badge = "#fef3c7"; text_badge = "#92400e"
-                            display_status = "🟡 Conditional Acceptance / Review Remarks"
-                        else:
-                            border_color = "#10b981"; bg_badge = "#d1fae5"; text_badge = "#065f46"
-                            display_status = "🟢 Standard Acceptance"
-
-                        st.markdown(f"""
-                            <div class="partner-card" style="border-left-color: {border_color}; margin-bottom: 5px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span class="partner-title">🏢 Carrier: {sheet_name} (Ref: {un_display})</span>
-                                    <span class="status-badge" style="background-color: {bg_badge}; color: {text_badge};">{display_status}</span>
-                                </div>
-                            </div>
-                        """, unsafe_allow_html=True)
-
-                        if not carrier_matched_rows and not specific_dg_list:
-                            st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found for this category from this carrier.</div></div>', unsafe_allow_html=True)
-                        else:
-                            # 📂 摺疊 1：專屬特定 DG 項目 / 針對大類類別的政策
-                            if specific_dg_list:
-                                specific_label = f"📋 View Specific DG Remarks ({len(specific_dg_list)} Items)"
-                                with st.expander(specific_label, expanded=False):
-                                    specific_html = "".join([f'<div class="remark-header">📌 [{str(rem["col_name"])}]</div><div class="remark-line">{str(rem["text"])}</div>' for rem in specific_dg_list])
-                                    st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
-                            
-                            # 📂 摺疊 2：通用通則
-                            if collapsed_list:
-                                expander_label = f"📄 View Global / Universal DG Policies ({len(collapsed_list)} Items)"
-                                with st.expander(expander_label, expanded=False):
-                                    collapsed_html = ""
-                                    for idx, rem in enumerate(collapsed_list):
-                                        if idx == 0:
-                                            header_label = f"Universal DG Policy {rem['num']}."
-                                        else:
-                                            header_label = f"{rem['num']}."
-                                        safe_text = str(rem["text"]).strip()
-                                        collapsed_html += f'<div class="collapsed-header">📌 {header_label}</div><div class="remark-line">{safe_text}</div>'
-                                        
-                                    st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
-                                    
-                            if not specific_dg_list and not collapsed_list:
-                                st.markdown('<div class="remark-box"><div class="remark-line">Standard conditions apply.</div></div>', unsafe_allow_html=True)
-                                    
+                    for label, bucket, bcolor, bgcolor, tcolor in final_render:
+                        for item in bucket:
+                            st.markdown(f'<div class="partner-card" style="border-left-color: {bcolor};"><div style="display: flex; justify-content: space-between; align-items: center;"><span class="partner-title">🏢 {item["name"]}</span><span class="status-badge" style="background-color: {bgcolor}; color: {tcolor};">{label}</span></div></div>', unsafe_allow_html=True)
+                            if item["spec"]:
+                                with st.expander(f"📋 Specific Remarks ({len(item['spec'])})"):
+                                    st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">' + "".join([f'<div class="remark-header">📌 [{s["col_name"]}]</div><div class="remark-line">{s["text"]}</div>' for s in item["spec"]]) + '</div>', unsafe_allow_html=True)
+                            if item["glob"]:
+                                with st.expander(f"📄 Global Policies ({len(item['glob'])})"):
+                                    html = ""
+                                    for idx, g in enumerate(item["glob"]):
+                                        header = f"Universal DG Policy {g['num']}." if idx==0 else f"{g['num']}."
+                                        html += f'<div class="collapsed-header">📌 {header}</div><div class="remark-line">{g["text"]}</div>'
+                                    st.markdown(f'<div class="remark-box">{html}</div>', unsafe_allow_html=True)
+                            if not item["has_match"]:
+                                st.caption("No specific matching rules found.")
                     st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("<br><br>", unsafe_allow_html=True)
-                            
     except Exception as e:
-        st.error(f"❌ File reading failed. Error message: {e}")
+        st.error(f"Error: {e}")
 
-# ==============================================================================
-# FOOTER SECTION: Copyright & Confidentiality Declaration
-# ==============================================================================
-st.markdown("""
-    <div class="footer-box">
-        <div style="color: #e11d48; font-weight: bold; margin-bottom: 8px;">
-            ⚠️ INTERNAL USE ONLY – DO NOT DISTRIBUTE EXTERNALLY
-        </div>
-        <div style="margin-bottom: 5px;">
-            Copyright © 2026 IAL DG TEAM. All Rights Reserved.
-        </div>
-        <div style="font-size: 13px; color: #38bdf8;">
-            Any issue and user feedback plz contact <a href="mailto:tim.lee@interasialine.com" style="color: #38bdf8; text-decoration: none; font-weight: bold;">tim.lee@interasialine.com</a> via Teams
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown('<div class="footer-box">⚠️ INTERNAL USE ONLY | Copyright © 2026 IAL DG TEAM</div>', unsafe_allow_html=True)
