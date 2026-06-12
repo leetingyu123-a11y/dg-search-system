@@ -446,7 +446,7 @@ else:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in IMDG Code Master Database!")
                     
                     # 📧 核心功能：改用 100% 成功的安全內建 SMTP 機制發送缺失通報信
-                    admin_email = "tim.lee@interasialine.com"  # 系統自動發送到您的信箱
+                    admin_email = "timbot000001@gmail.com"  # 系統自動發送到您的信箱
                     current_time_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     user_id = st.session_state.get('user_email', 'Unknown_User')
                     
