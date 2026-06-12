@@ -445,23 +445,31 @@ else:
                 if un_exists.empty:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in IMDG Code Master Database!")
                     
-                    # 🌟 核心功能：帶有網頁前端狀態回報與 Chrome 標頭偽裝的表單發送區塊
-                    form_url = "https://docs.google.com/forms/d/e/1FAIpQLSc1caW7PBAtU3wtsQ_J6UoPOuJeFAKbyUfa3shMqCOSV7vLMQ/formResponse"
-                    form_data = {
-                        "entry.1445284603": st.session_state.get('user_email', 'Unknown_User'),  
-                        "entry.520419811": input_un                                              
-                    }
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    }
+                    # 📧 核心功能：改用 100% 成功的安全內建 SMTP 機制發送缺失通報信
+                    admin_email = "tim.lee@interasialine.com"  # 系統自動發送到您的信箱
+                    current_time_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    user_id = st.session_state.get('user_email', 'Unknown_User')
+                    
+                    mail_content = (
+                        f"【系統自動通知：缺失 UN 號碼報告】\n\n"
+                        f"查詢同仁：{user_id}\n"
+                        f"查詢時間：{current_time_str}\n"
+                        f"缺失的 UN 號碼：【 UN {input_un} 】\n\n"
+                        f"提示：此號碼在母檔 (imdg_master.xlsx) 中不存在，請管理員抽空核對並補檔。"
+                    )
+                    msg = MIMEText(mail_content, 'plain', 'utf-8')
+                    msg['From'] = Header(f"DG System Alert <{SENDER_EMAIL}>", 'utf-8')
+                    msg['To'] = Header(admin_email, 'utf-8')
+                    msg['Subject'] = Header(f"⚠️ [缺失資料通報] 同仁查詢了未包含的 UN {input_un}", 'utf-8')
+                    
                     try:
-                        res = requests.post(form_url, data=form_data, headers=headers, timeout=5)
-                        if res.status_code == 200:
-                            st.toast("ℹ️ 系統提示：缺失 UN 已成功同步至後台試算表！")
-                        else:
-                            st.error(f"⚠️ Google 表單傳送失敗，狀態碼：{res.status_code}（通常為表單權限阻擋）")
-                    except Exception as e:
-                        st.error(f"⚠️ 傳送過程發生網路異常：{e}")
+                        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
+                        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                        server.sendmail(SENDER_EMAIL, [admin_email], msg.as_string())
+                        server.quit()
+                        st.toast(f"📩 缺失 UN {input_un} 已自動秒發 Email 通知管理員補檔！")
+                    except Exception as mail_err:
+                        st.error(f"⚠️ 自動發送通知信失敗：{mail_err}")
                         
                     is_valid_input = False
                 else:
