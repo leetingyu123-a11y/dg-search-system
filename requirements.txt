@@ -1,3 +1,5 @@
 pandas
 openpyxl
 extra-streamlit-components
+gspread
+google-auth
