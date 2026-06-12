@@ -1,5 +1,8 @@
 import streamlit as st
+
+# 🚨 Streamlit 規定此指令必須是全程式第一個執行的 Streamlit 動作！
 st.set_page_config(page_title="Carrier DG Prohibited List Query System", layout="wide")
+
 import datetime  
 import random
 import smtplib
@@ -53,16 +56,13 @@ tracker.update_activity(current_user)
 def log_missed_un_to_google_form(user_email, missed_un):
     """當同仁查不到 UN 時，在背景默默幫他填寫 Google 表單紀錄"""
     try:
-        # 帶入你專屬的 Google 表單發送網址
         form_url = "https://docs.google.com/forms/d/e/1FAIpQLSc1caW7PBAtU3wtsQ_J6UoPOuJeFAKbyUfa3shMqCOSV7vLMQ/formResponse"
         
-        # 帶入你解密出來的欄位專屬 entry 代號
         form_data = {
-            "entry.1445284603": user_email,        # 👈 填入同仁 Email 的格子
-            "entry.520419811": f"UN {missed_un}"  # 👈 填入查無 UN 的格子
+            "entry.1445284603": user_email,        
+            "entry.520419811": f"UN {missed_un}"  
         }
         
-        # 在背景默默送出 POST 請求
         response = requests.post(form_url, data=form_data)
         return response.status_code == 200
     except Exception as e:
@@ -113,7 +113,6 @@ if "user_email" not in st.session_state:
 
 def send_otp_email(to_email, otp_code):
     """ 發送安全驗證碼郵件 """
-    # 💡 在函數內部再次明確導入，雙重保險防禦 NameError
     from email.mime.text import MIMEText
     from email.header import Header
 
@@ -474,7 +473,7 @@ else:
                 un_exists = master_df[master_df['UN Number'] == input_un]
                 if un_exists.empty:
                     st.error(f"❌ Regulatory Alert: UN {input_un} is NOT found in IMDG Database!")
-                    log_missed_un_to_google_form(st.session_state.user_email, input_un) # 🚀 背景發送表單
+                    log_missed_un_to_google_form(st.session_state.user_email, input_un) 
                     is_valid_input = False
                 else:
                     for _, row in un_exists.drop_duplicates(subset=['Class', 'Detected_SubRisk', 'PSN']).iterrows():
@@ -565,18 +564,36 @@ else:
                             payload.update({"border_color": "#10b981", "bg_badge": "#d1fae5", "text_badge": "#065f46", "display_status": "🟢 Standard Acceptance"})
                             green_bucket.append(payload)
 
+                    # ==============================================================================
+                    # 🛠️ 【核心修復區】優化網頁卡片渲染，徹底根除單行語法解析錯誤
+                    # ==============================================================================
                     for target_bucket in [green_bucket, yellow_bucket, red_bucket]:
                         for item in target_bucket:
                             st.markdown(f'<div class="partner-card" style="border-left-color: {item["border_color"]}; margin-bottom: 5px;"><div style="display: flex; justify-content: space-between; align-items: center;"><span class="partner-title">{item["carrier_name"]} <span class="version-badge">{item["version_tag"]}</span><div style="font-size: 13px; color: #64748b; font-weight: normal; margin-top: 4px;">Ref: {item["un_display"]}</div></span><span class="status-badge" style="background-color: {item["bg_badge"]}; color: {item["text_badge"]};">{item["display_status"]}</span></div></div>', unsafe_allow_html=True)
+                            
                             if not item['carrier_matched_rows'] and not item['specific_dg_list']:
                                 st.markdown('<div class="remark-box"><div class="remark-line">No specific booking restrictions found.</div></div>', unsafe_allow_html=True)
                             else:
+                                # 1. 渲染特定備註（修正原本擠在單行造成 SyntaxError 的地方）
                                 if item['specific_dg_list']:
                                     with st.expander(f"📋 View Specific DG Remarks ({len(item['specific_dg_list'])} Items)"):
-                                        st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{"".join([f`<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>` for rem in item["specific_dg_list"]])}</div>', unsafe_allow_html=True)
+                                        specific_html_list = []
+                                        for rem in item["specific_dg_list"]:
+                                            specific_html_list.append(f'<div class="remark-header">📌 [{rem["col_name"]}]</div><div class="remark-line">{rem["text"]}</div>')
+                                        specific_html = "".join(specific_html_list)
+                                        st.markdown(f'<div class="remark-box" style="border-left: 4px solid #0284c7;">{specific_html}</div>', unsafe_allow_html=True)
+                                
+                                # 2. 渲染全域條款（修正嵌套 f-string 及引號衝突）
                                 if item['collapsed_list']:
                                     with st.expander(f"📄 View Global DG Policies ({len(item['collapsed_list'])} Items)"):
-                                        st.markdown(f'<div class="remark-box">{"".join([f`<div class="collapsed-header">📌 {f"Universal Policy {rem['num']}. " if idx == 0 else f"{rem['num']}. "}</div><div class="remark-line">{rem["text"]}</div>` for idx, rem in enumerate(item["collapsed_list"])])}</div>', unsafe_allow_html=True)
+                                        collapsed_html_list = []
+                                        for idx, rem in enumerate(item["collapsed_list"]):
+                                            policy_num = rem['num']
+                                            num_tag = f"Universal Policy {policy_num}. " if idx == 0 else f"{policy_num}. "
+                                            collapsed_html_list.append(f'<div class="collapsed-header">📌 {num_tag}</div><div class="remark-line">{rem["text"]}</div>')
+                                        collapsed_html = "".join(collapsed_html_list)
+                                        st.markdown(f'<div class="remark-box">{collapsed_html}</div>', unsafe_allow_html=True)
+                                        
                             st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("<br><br>", unsafe_allow_html=True)
                             
