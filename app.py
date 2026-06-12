@@ -467,9 +467,9 @@ else:
                         server.login(SENDER_EMAIL, SENDER_PASSWORD)
                         server.sendmail(SENDER_EMAIL, [admin_email], msg.as_string())
                         server.quit()
-                        st.toast(f"📩 缺失 UN {input_un} 已自動秒發 Email 通知管理員補檔！")
+                        st.toast(f"📩 缺失 UN {input_un} ⚠️")
                     except Exception as mail_err:
-                        st.error(f"⚠️ 自動發送通知信失敗：{mail_err}")
+                        st.error(f"⚠️ ：{mail_err}")
                         
                     is_valid_input = False
                 else:
