@@ -43,42 +43,26 @@ if not current_user:
     current_user = 'Guest'
 tracker.update_activity(current_user)
 
-# ==============================================================================
-# 🚨 NEW MODULE: Automated Missed UN Google Sheets Logger (地雷補磚器 - B方案)
-# ==============================================================================
-def log_missed_un_to_sheets(user_email, missed_un):
-    """Automatically logs missing 4-digit UN numbers into a designated Google Sheet via Service Account."""
-    try:
-        # Define API scopes required for Google Drive & Sheets access
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        
-        # Pull encrypted GCP service account credentials from Streamlit Secrets backend
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        client = gspread.authorize(creds)
-        
-        # Pull target Google Sheet URL from Streamlit Secrets backend
-        sheet_url = st.secrets["general"]["target_sheet_url"]
-        
-        # Open the spreadsheet and select the very first worksheet tab
-        workbook = client.open_by_url(sheet_url)
-        worksheet = workbook.sheet1  
-        
-        # Formulate timestamped row payload
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        row_payload = [current_time, user_email, f"UN {missed_un}"]
-        
-        # Append data as a new row dynamically at the bottom of the worksheet
-        worksheet.append_row(row_payload)
-        return True
-    except Exception as e:
-        # Fails silently in frontend to prevent crashing user UI, logs error internally
-        print(f"CRITICAL: Failed to append missing data row to Google Sheets. Error: {e}")
-        return False
+import requests
 
+def log_missed_un_to_google_form(user_email, missed_un):
+    """透過 Google 表單默默在後台填表，完全免費、免開 GCP 帳號、免金鑰！"""
+    try:
+        # 換成你的 Google 表單送出網址 (把原本的 viewform 改成 formResponse)
+        form_url = "https://docs.google.com/forms/d/e/你的表單ID/formResponse"
+        
+        # 這裡的 entry.XXXXX 是你表單欄位的背後代號 (網頁檢查就能看到)
+        form_data = {
+            "entry.123456789": user_email,   # 填入同仁 Email
+            "entry.987654321": f"UN {missed_un}"  # 填入漏掉的 UN
+        }
+        
+        # 在背景默默送出表單
+        response = requests.post(form_url, data=form_data)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Log to form failed: {e}")
+        return False
 # ==============================================================================
 # CORE MODULE: Async-Safe Cookie Verification (F5 & Original URL Proof)
 # ==============================================================================
