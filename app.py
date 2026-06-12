@@ -605,10 +605,15 @@ else:
                         "entry.1445284603": st.session_state.get('user_email', 'Unknown_User'),  # 自動填入同仁 Email
                         "entry.520419811": input_un                                              # 自動填入查不到的 UN
                     }
-                    try:
-                        requests.post(form_url, data=form_data, timeout=5)
-                    except Exception:
-                        pass  # 靜態忽略錯誤，確保網路微斷線不影響前台使用者體驗
+# 🛠️ 修改後的除錯版程式碼：
+try:
+    res = requests.post(form_url, data=form_data, timeout=5)
+    if res.status_code == 200:
+        st.toast("ℹ️ 缺失 UN 已嘗試背後同步至 Google 表單。")
+    else:
+        st.error(f"❌ Google 表單拒絕接收資料！狀態碼：{res.status_code}（通常是表單權限沒開，或需要登入）")
+except Exception as e:
+    st.error(f"❌ 系統連不到 Google 伺服器，錯誤原因：{e}")
                         
                     is_valid_input = False
                 else:
